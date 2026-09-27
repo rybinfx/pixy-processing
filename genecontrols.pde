@@ -1,9 +1,3 @@
-float weightTotal(float[] weights) {
-  float total = 0;
-  for (float weight : weights) total += max(0, weight);
-  return total;
-}
-
 // The original home-text area, containing only grouped probability sliders.
 class GeneControls {
   App owner;
@@ -14,31 +8,30 @@ class GeneControls {
 
   GeneControls(App owner_) {
     owner = owner_;
-    addGroup("Values", genesValues, genesValuesRate);
+    addGroup("Values", genesValues);
     for (int i = 0; i < genesMethods.length; i++) {
-      addGroup(getMethodGroupName(i), genesMethods[i], genesMethodsRate[i]);
+      addGroup(getMethodGroupName(i), genesMethods[i]);
     }
   }
 
-  void addGroup(String title, String[] names, float[] weights) {
+  void addGroup(String title, String[] names) {
     GeneControlGroup group = new GeneControlGroup(title);
     for (int i = 0; i < names.length; i++) {
       int id = controls.size();
       Slider slider = cp5time.addSlider("geneProbability"+id);
       slider.setBroadcast(false);
-      slider.setId(id).setRange(0, 1).setValue(weights[i])
+      slider.setId(id).setRange(0, 1).setValue(geneSliderValue(names[i]))
         .setScrollSensitivity(0)
         .setLabel(names[i])
-        .setLabelVisible(true)
-        .setColorActive(owner.sliderColor)
-        .setColorBackground(owner.grayDark)
-        .setColorForeground(owner.sliderColor);
+        .setLabelVisible(true);
+      owner.styleSlider(slider);
       slider.getCaptionLabel().setFont(owner.controlFont)
-        .align(ControlP5.CENTER, ControlP5.CENTER);
-      slider.getValueLabel().setVisible(false);
+        .align(ControlP5.LEFT, ControlP5.CENTER).setPadding(5, 0);
+      slider.getValueLabel().setFont(owner.controlFont)
+        .align(ControlP5.RIGHT, ControlP5.CENTER).setPadding(9, 0).setVisible(true);
       slider.hide();
       slider.setBroadcast(true);
-      GeneControl control = new GeneControl(names[i], weights, i, slider);
+      GeneControl control = new GeneControl(names[i], slider, names == genesValues);
       controls.add(control);
       group.controls.add(control);
     }
@@ -50,7 +43,8 @@ class GeneControls {
     x = px; y = py; w = pw; h = ph;
     contentHeight = 0;
     for (GeneControlGroup group : groups) contentHeight += group.height()+10;
-    scroll = constrain(scroll, 0, max(0, contentHeight-10-h));
+    contentHeight = max(0, contentHeight-10);
+    scroll = constrain(scroll, 0, max(0, contentHeight-h));
     float top = y-scroll;
     float columnWidth = (w-50)/4;
     for (GeneControlGroup group : groups) {
@@ -65,12 +59,25 @@ class GeneControls {
         // setSize recreates the native slider view and resets its caption
         // to RIGHT_OUTSIDE. Apply the inside alignment after sizing.
         control.slider.getCaptionLabel()
-          .align(ControlP5.CENTER, ControlP5.CENTER).setPadding(0, 0);
-        control.slider.getValueLabel().setVisible(false);
+          .align(ControlP5.LEFT, ControlP5.CENTER).setPadding(5, 0);
+        control.slider.getValueLabel()
+          .align(ControlP5.RIGHT, ControlP5.CENTER).setPadding(9, 0).setVisible(true);
         if (rowVisible) control.slider.show();
         else control.slider.hide();
+        owner.styleSlider(control.slider);
       }
       top += group.height()+10;
+    }
+    updatePercentages();
+  }
+
+  void updatePercentages() {
+    float valuesTotal = geneWeightTotal(genesValues);
+    float functionsTotal = geneWeightTotal(geneFunctionPool);
+    for (GeneControl control : controls) {
+      float total = control.valueFamily ? valuesTotal : functionsTotal;
+      float percent = total > 0 ? 100 * geneProbability(control.name) / total : 0;
+      control.slider.getValueLabel().setText(nf(percent, 1, 1)+"%");
     }
   }
 
@@ -95,19 +102,22 @@ class GeneControls {
   void change(int id, float value) {
     if (id < 0 || id >= controls.size()) return;
     GeneControl control = controls.get(id);
-    float previous = control.weights[control.index];
-    control.weights[control.index] = constrain(value, 0, 1);
-    if (control.weights == genesValuesRate && weightTotal(genesValuesRate) == 0) {
-      control.weights[control.index] = previous;
+    float previous = geneSliderValue(control.name);
+    geneSliderValues.put(control.name, constrain(value, 0, 1));
+    if (geneWeightTotal(genesValues) == 0) {
+      geneSliderValues.put(control.name, previous);
       control.slider.setBroadcast(false);
       control.slider.setValue(previous);
       control.slider.setBroadcast(true);
     }
+    // Native slider updates replace the value label before broadcasting.
+    // Restore weighted percentages immediately, including during dragging.
+    updatePercentages();
   }
 
   void wheel(float amount) {
     if (visible && mouseOver(x, y, w, h)) {
-      scroll = constrain(scroll+amount*26, 0, max(0, contentHeight-10-h));
+      scroll = constrain(scroll+amount*26, 0, max(0, contentHeight-h));
     }
   }
 }
@@ -123,12 +133,12 @@ class GeneControlGroup {
 
 class GeneControl {
   String name;
-  float[] weights;
-  int index;
   Slider slider;
+  boolean valueFamily;
   float x, y;
 
-  GeneControl(String name_, float[] weights_, int index_, Slider slider_) {
-    name = name_; weights = weights_; index = index_; slider = slider_;
+  GeneControl(String name_, Slider slider_, boolean valueFamily_) {
+    name = name_; slider = slider_;
+    valueFamily = valueFamily_;
   }
 }

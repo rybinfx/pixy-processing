@@ -1,11 +1,37 @@
+float probability_exponent = 2;
+int depth_max = 8;
+int width_max = 8;
+// u_args in fragment.glsl contains 512 floats; each random value uses three.
+final int geneArgumentLimit = 512 / 3;
+
+// Raw slider positions, keyed by gene rather than by UI group.
+HashMap<String, Float> geneSliderValues = new HashMap<String, Float>();
+
+float geneSliderValue(String name) {
+	Float value = geneSliderValues.get(name);
+	return value != null ? value : (name.equals("x") || name.equals("y") ? 1 : 0);
+}
+
+float geneProbability(String name) {
+	float value = geneSliderValue(name);
+	return value <= 0 ? 0 : pow(value, probability_exponent);
+}
+
+float geneWeightTotal(String[] names) {
+	float total = 0;
+	for (String name : names) total += geneProbability(name);
+	return total;
+}
+
 String[] genesValues = new String[] {
 	"x",
 	"y",
 	"rndm",
   //"rndm2",
-	"rndm3"
+	"rndm3",
+	"time",
+	"sintime"
 };
-float[] genesValuesRate = new float[] {1, 1, 0, 0};
 
 
 String[] genesBasicMath = new String[] {
@@ -14,7 +40,6 @@ String[] genesBasicMath = new String[] {
 	"mult",
 	"div"
 };
-float[] genesBasicMathRate = new float[] {0, 0, 0, 0};
 
 String[] genesExponential = new String[] {
 	"pow2",
@@ -24,7 +49,6 @@ String[] genesExponential = new String[] {
 	"2pow",
 	"2log"
 };
-float[] genesExponentialRate = new float[] {0, 0, 0, 0, 0, 0};
 
 
 String[] genesRound = new String[] {
@@ -34,7 +58,6 @@ String[] genesRound = new String[] {
 	"ceil",
 	"round"
 };
-float[] genesRoundRate = new float[] {0, 0, 0, 0, 0};
 
 String[] genesTrig = new String[] {
 	"sin",
@@ -44,7 +67,6 @@ String[] genesTrig = new String[] {
 	"acos",
 	"atan"
 };
-float[] genesTrigRate = new float[] {0, 0, 0, 0, 0, 0};
 
 
 String[] genesConstrain = new String[] {
@@ -53,13 +75,11 @@ String[] genesConstrain = new String[] {
 	"clamp",
 	"abs"
 };
-float[] genesConstrainRate = new float[] {0, 0, 0, 0};
 
 
 String[] genesMix = new String[] {
 	"mix"
 };
-float[] genesMixRate = new float[] {0};
 
 String[] genesLogic = new String[] {
 	"if",
@@ -67,7 +87,6 @@ String[] genesLogic = new String[] {
 	"or",
 	"xor"
 };
-float[] genesLogicRate = new float[] {0, 0, 0, 0};
 
 
 String[] genesElse = new String[] {
@@ -78,13 +97,6 @@ String[] genesElse = new String[] {
 	"setV"
 	//"noise2"
 };
-float[] genesElseRate = new float[] {0, 0, 0, 0, 0};
-
-String[] genesTime = new String[] {
-	"time",
-	"sintime"
-};
-float[] genesTimeRate = new float[] {0, 0};
 
 
 String[][] genesMethods = new String[][] {
@@ -95,22 +107,21 @@ String[][] genesMethods = new String[][] {
 	genesConstrain,
 	genesMix,
 	genesLogic,
-	genesElse,
-	genesTime
+	genesElse
 };
 
 
-float[][] genesMethodsRate = new float[][] {
-	genesBasicMathRate,
-	genesExponentialRate,
-	genesRoundRate,
-	genesTrigRate,
-	genesConstrainRate,
-	genesMixRate,
-	genesLogicRate,
-	genesElseRate,
-	genesTimeRate
-};
+// Functions share a flat pool; values are selected separately at branch ends.
+// The groups above only determine card layout.
+String[] geneFunctionPool = createGeneFunctionPool();
+
+String[] createGeneFunctionPool() {
+	ArrayList<String> names = new ArrayList<String>();
+	for (String[] group : genesMethods) {
+		for (String name : group) names.add(name);
+	}
+	return names.toArray(new String[0]);
+}
 
 String getMethodGroupName(int n) {
 	if (n == 0) return "Basic Math";
@@ -121,7 +132,6 @@ String getMethodGroupName(int n) {
 	if (n == 5) return "Mix";
 	if (n == 6) return "Logic";
 	if (n == 7) return "Else";
-	if (n == 8) return "Time";
 	return "Oops";
 }
 
@@ -137,8 +147,13 @@ class Gene {
 	float phaseOffset;
 
 	Gene(DNA p_, String type_) {
+		this(p_, type_, true);
+	}
+
+	Gene(DNA p_, String type_, boolean initialize) {
 		p = p_;
 		type = type_;
+		if (!initialize) return;
 
 		if (type == "x") nodes = 0;
 		if (type == "y") nodes = 0;
@@ -194,8 +209,8 @@ class Gene {
 
 		if (type == "rndm") {
 			nodes = 0;
-			if (p.args.size() >= 511) {
-				argsBinder = 511;
+			if (p.args.size() >= geneArgumentLimit) {
+				argsBinder = geneArgumentLimit-1;
 			} else {
 				argsBinder = p.args.size();
 				float temp = random(1);
@@ -205,8 +220,8 @@ class Gene {
 
 		if (type == "rndm3") {
 			nodes = 0;
-			if (p.args.size() >= 511) {
-				argsBinder = 511;
+			if (p.args.size() >= geneArgumentLimit) {
+				argsBinder = geneArgumentLimit-1;
 			} else {
 				argsBinder = p.args.size();
 				float temp = random(1);
@@ -249,7 +264,8 @@ class Gene {
 	}
 
 	Gene copy(DNA p_) {
-		Gene temp = new Gene(p_, type);
+		// Copying a branch must not allocate unused random arguments in its owner.
+		Gene temp = new Gene(p_, type, false);
 		temp.adress = new ArrayList<Integer>(adress);
 		temp.depth = depth;
 		temp.nodes = nodes;

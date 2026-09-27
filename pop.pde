@@ -3,6 +3,7 @@ class Pop {
 
 	ArrayList<Artwork> arts = new ArrayList<Artwork>();
 	ArrayList<DNA> lastPool = new ArrayList<DNA>();
+	int lastParentIndex = -1;
 
 	Pop(App p_) {
 		p = p_;
@@ -28,49 +29,59 @@ class Pop {
 
 	void evolve() {
 		ArrayList<DNA> pool = new ArrayList<DNA>();
-		for (Artwork a : arts) {
-			if (a.isSelected) pool.add(a.dna);
-			a.isSelected = false;
-		}
-		if (pool.size() == 1) {
-			arts.get(0).assignDNA(pool.get(0).copy());
-			for (int i = 1; i < arts.size(); i++) {
-				DNA newDNA = pool.get(0).copy();
-				newDNA.mutate();
-				arts.get(i).assignDNA(newDNA);
+		int parentIndex = -1;
+		for (int i = 0; i < arts.size(); i++) {
+			Artwork a = arts.get(i);
+			if (a.isSelected) {
+				pool.add(a.dna);
+				parentIndex = i;
 			}
 		}
-		if (pool.size() > 1) {
-			for (Artwork a : arts) {
-				DNA newDNA = pool.get((int)random(pool.size()));
-				newDNA = newDNA.sex(newDNA, pool.get((int)random(pool.size())));
-				a.assignDNA(newDNA);
-			}
-		}
+		if (pool.isEmpty()) return;
+		developPool(pool, parentIndex);
 		lastPool = pool;
 	}
 
-	void evolveAgain() {
-		ArrayList<DNA> pool = lastPool;
-		for (Artwork a : arts) {
-			if (a.isSelected) pool.add(a.dna);
-			a.isSelected = false;
-		}
+	void developPool(ArrayList<DNA> pool, int parentIndex) {
+		for (Artwork a : arts) a.isSelected = false;
 		if (pool.size() == 1) {
-			arts.get(0).assignDNA(pool.get(0).copy());
-			for (int i = 1; i < arts.size(); i++) {
+			lastParentIndex = constrain(parentIndex, 0, arts.size()-1);
+			for (int i = 0; i < arts.size(); i++) {
+				if (i == lastParentIndex) {
+					// Preserve the parent and its shader in the original grid cell.
+					if (arts.get(i).dna != pool.get(0)) arts.get(i).assignDNA(pool.get(0));
+					arts.get(i).isSelected = true;
+					continue;
+				}
 				DNA newDNA = pool.get(0).copy();
 				newDNA.mutate();
 				arts.get(i).assignDNA(newDNA);
 			}
 		}
 		if (pool.size() > 1) {
+			lastParentIndex = -1;
 			for (Artwork a : arts) {
 				DNA newDNA = pool.get((int)random(pool.size()));
 				newDNA = newDNA.sex(newDNA, pool.get((int)random(pool.size())));
 				a.assignDNA(newDNA);
 			}
 		}
+	}
+
+	void evolveAgain() {
+		ArrayList<DNA> pool = new ArrayList<DNA>(lastPool);
+		int parentIndex = lastParentIndex;
+		for (int i = 0; i < arts.size(); i++) {
+			Artwork a = arts.get(i);
+			// The retained parent is already in the repeat pool.
+			if (a.isSelected && !pool.contains(a.dna)) {
+				pool.add(a.dna);
+				parentIndex = i;
+			}
+		}
+		if (pool.isEmpty()) return;
+		developPool(pool, parentIndex);
+		lastPool = pool;
 	}
 
 	void randomPop() {
@@ -79,6 +90,7 @@ class Pop {
 			a.isSelected = false;
 		}	
 		lastPool = new ArrayList<DNA>();	
+		lastParentIndex = -1;
 	}
 
 	void display(int num, float x, float y, float w, float h) {

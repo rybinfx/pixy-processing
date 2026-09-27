@@ -1,6 +1,7 @@
 PApplet sketchRef = this;
 
 App app;
+ResizeAnimationRecovery resizeAnimationRecovery;
 String[] vertexShader;
 String[] fragmentShader;
 CheckBox checkbox;
@@ -42,7 +43,27 @@ void setup() {
 	renderer = createExportGraphics(800);
 
 	app = new App();
+	if (platform == MACOSX && surface.getNative() instanceof com.jogamp.newt.opengl.GLWindow) {
+		resizeAnimationRecovery = new ResizeAnimationRecovery(
+			(com.jogamp.newt.opengl.GLWindow) surface.getNative());
+	}
 
+}
+
+@Override
+public void handleDraw() {
+  // Native macOS resize callbacks can arrive without a context class loader.
+  // Supply the sketch loader while drawing, without skipping resize redraws.
+  Thread renderThread = Thread.currentThread();
+  ClassLoader originalLoader = renderThread.getContextClassLoader();
+  try {
+    if (originalLoader == null) {
+      renderThread.setContextClassLoader(getClass().getClassLoader());
+    }
+    super.handleDraw();
+  } finally {
+    if (originalLoader == null) renderThread.setContextClassLoader(originalLoader);
+  }
 }
 
 void draw() {
@@ -72,17 +93,33 @@ void mouseMoved() {
 	app.mouseMoved();
 }
 
+void windowResized() {
+  if (app != null) app.windowResized();
+}
+
 void mouseWheel(processing.event.MouseEvent event) {
   app.geneControls.wheel(event.getCount());
 }
 
 PGraphics createExportGraphics(int size) {
-  PGraphics target = createGraphics(size, size, P2D);
-  // Offscreen graphics inherit the display density. Exports must instead
-  // keep the exact pixel dimensions selected in the resolution control.
-  if (target.pixelDensity != 1) {
-    target.pixelDensity = 1;
-    target.setSize(size, size);
-  }
+  PGraphics target = new ExportGraphics();
+  target.setParent(sketchRef);
+  target.setPrimary(false);
+  target.pixelDensity = 1;
+  target.setSize(size, size);
   return target;
+}
+
+class ExportGraphics extends processing.opengl.PGraphics2D {
+  @Override
+  protected processing.opengl.PGL createPGL(processing.opengl.PGraphicsOpenGL graphics) {
+    return new processing.opengl.PJOGL(graphics) {
+      @Override
+      protected float getPixelScale() {
+        // Processing 4.5.6 normally takes this from the window, even for
+        // offscreen graphics. Exports need a 1x viewport and framebuffer.
+        return 1;
+      }
+    };
+  }
 }

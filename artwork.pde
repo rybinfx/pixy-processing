@@ -9,10 +9,8 @@ class Artwork {
 
 	float resolution;
 	float g_scale;
-	PVector g_offset;
 
 	PShader shader;
-	String[] shaderCode = fragmentShader.clone();
 
 	boolean isSelected = false;
 	
@@ -28,14 +26,13 @@ class Artwork {
 		w = 0;
 		h = 0;
 
-		shader = loadShader("data/fragment.glsl");
 	}
 
 	// GENERAL
 
 	void randomDNA() {
 		dna = new DNA("RANDOM");
-		dna.scale = p.p.initialScale;
+		dna.scale = p.p.shaderScaleValue();
 		compileShader();
 	}
 
@@ -48,23 +45,35 @@ class Artwork {
 
 	void display(float x_, float y_, float w_, float h_) {
 		update(x_,y_,w_,h_);
-		setShader(g);
+		setShader(g, x, y, w, h);
 		shader(shader);
 		rect(x_,y_,w,h);
 		resetShader();
 	}
 
 	void compileShader() {
-		shaderCode[shaderCode.length - 14] = dna.code;
-		saveStrings("data/temp/shader"+id, shaderCode);
-		shader = loadShader("data/temp/shader"+id);
-
+		String[] shaderCode = fragmentShader.clone();
+		boolean inserted = false;
+		for (int i = 0; i < shaderCode.length; i++) {
+			if (shaderCode[i].contains("// PIXY_GRAPH")) {
+				shaderCode[i] = dna.code;
+				inserted = true;
+			}
+		}
+		if (!inserted) throw new IllegalStateException("Missing PIXY_GRAPH shader marker");
+		String path = "data/temp/shader"+id;
+		saveStrings(path, shaderCode);
+		shader = new GeneratedShader(path);
 	}
 
-	void setShader(PGraphics target) {
-		shader.set("u_g_off", g_offset.x, g_offset.y);
-		// gl_FragCoord uses physical pixels; layout and mouse coordinates do not.
-		shader.set("u_g_scale", g_scale / target.pixelDensity);
+	void setShader(PGraphics target, float drawX, float drawY, float drawWidth, float drawHeight) {
+		float coordinateScale = 4 / drawWidth;
+		// Convert the rectangle's center to OpenGL's bottom-left origin.
+		shader.set("u_g_off", -(drawX+drawWidth/2)*coordinateScale,
+			-(target.height-drawY-drawHeight/2)*coordinateScale);
+		// Use the actual framebuffer dimensions, not just density metadata.
+		float pixelScale = (float) target.pixelWidth / target.width;
+		shader.set("u_g_scale", coordinateScale / pixelScale);
 		shader.set("u_off", dna.offset.x, dna.offset.y);
 		shader.set("u_scale", dna.scale);
 		shader.set("u_hoff", dna.hueOffset);
@@ -77,20 +86,11 @@ class Artwork {
 	}
 
 	void update(float x_, float y_, float w_, float h_) {
-		update(x_, y_, w_, h_, height);
-	}
-
-	void update(float x_, float y_, float w_, float h_, float dh_) {
-		if (x_!=x || y_!=y || w_!=w || h_!=h || dh_ != height) {
-			w = w_;
-			h = h_;
-			x = x_;
-			y =  y_;
-
-			g_scale = 1/w * 4;
-			g_offset = new PVector(-x/w - 0.5, -(dh_ - y - h - (w-h)/2)/w - 0.5);
-			g_offset.mult(4);
-		}
+		w = w_;
+		h = h_;
+		x = x_;
+		y = y_;
+		g_scale = 4 / w;
 	}
 
 	// CONTROLS
@@ -125,31 +125,54 @@ class Artwork {
 	// EXPORTING
 
 	void render(String path) {
-		update(0,0,app.expSize,app.expSize,app.expSize);
-
-		renderer.beginDraw();
-		setShader(renderer);
-		renderer.shader(shader);
-		renderer.rect(0,0,app.expSize,app.expSize);
-		renderer.endDraw();
+		drawExport(renderer);
 		renderer.save(path);
-		resetShader();
 	}
 
 	void export(String path) {
 		PGraphics export = createExportGraphics(app.expSize);
-		update(0,0,app.expSize,app.expSize,app.expSize);
-
-		export.beginDraw();
-		setShader(export);
-		export.shader(shader);
-		export.rect(0,0,app.expSize,app.expSize);
-		export.endDraw();
+		drawExport(export);
 		export.save(path);
-		resetShader();
+	}
+
+	void drawExport(PGraphics target) {
+		// Export coordinates stay independent of the on-screen rectangle used
+		// for dragging. The target's size remains fixed for a frame sequence.
+		target.beginDraw();
+		target.pushStyle();
+		target.rectMode(CORNER);
+		target.noStroke();
+		target.fill(255);
+		setShader(target, 0, 0, target.width, target.height);
+		target.shader(shader);
+		target.rect(0, 0, target.width, target.height);
+		target.resetShader();
+		target.popStyle();
+		target.endDraw();
 	}
 
 	void export() {
 		export("export/image_"+int(random(999999))+".jpg");
+	}
+}
+
+class GeneratedShader extends PShader {
+	GeneratedShader(String fragmentPath) {
+		// Keep Processing's file loader so it adapts GLSL to the active GL version.
+		super(sketchRef, "data/vertex.glsl", fragmentPath);
+	}
+
+	@Override
+	protected void consumeUniforms() {
+		// A valid generated graph may not use coordinates, time, or arguments.
+		// Check the linked shader, since optimization can remove these uniforms
+		// even when their nodes appear in the generated source.
+		if (uniformValues != null) {
+			java.util.Iterator<String> names = uniformValues.keySet().iterator();
+			while (names.hasNext()) {
+				if (getUniformLoc(names.next()) < 0) names.remove();
+			}
+		}
+		super.consumeUniforms();
 	}
 }

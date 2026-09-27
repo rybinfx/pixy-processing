@@ -88,11 +88,8 @@ vec3 g_div(vec3 a, vec3 b) {
 // EXPONENTIAL
 
 vec3 g_pow2(vec3 a) {
-	vec3 temp;
-	temp.x = pow(a.x,2);
-	temp.y = pow(a.y,2);
-	temp.z = pow(a.z,2);
-	return temp;
+	// GLSL pow() is undefined for negative bases, even with exponent 2.
+	return a * a;
 }
 
 vec3 g_sqrt(vec3 a) {
@@ -356,7 +353,7 @@ vec3 g_xor(vec3 a, vec3 b, vec3 a2, vec3 b2, vec3 c, vec3 d) {
 	if (((a.y > b.y) && !(a2.y > b2.y)) || (!(a.y > b.y) && (a2.y > b2.y))) {
 		temp.y = c.y;
 	} else {
-		temp.z = d.z;
+		temp.y = d.y;
 	}
 	if (((a.z > b.z) && !(a2.z > b2.z)) || (!(a.z > b.z) && (a2.z > b2.z))) {
 		temp.z = c.z;
@@ -485,7 +482,7 @@ void main() {
 		iterY = y_;
 		for (int x_ = 0; x_ < u_aa; x_ ++) {
 			iterX = x_;
-			col = vec3(0.0,0.0,0.0);
+			col = vec3(0.0,0.0,0.0); // PIXY_GRAPH
 			precol[iter] = col;
 
 			iter ++;

@@ -10,7 +10,7 @@ class App {
 	Pop pop;
 	int aa = 1;
 	int expSize = 1000;
-	float initialScale = 4;
+	float initialScale = 0;
 
 	int lastSel = -1;
 	
@@ -27,6 +27,8 @@ class App {
 	int inputGraphicsWidth = -1;
 	int inputGraphicsHeight = -1;
 	boolean pointerGestureActive = false;
+	boolean resizeInputPending = false;
+	int lastResizeInputTime;
 
 	NodeDisplay nd = new NodeDisplay();
 	GeneControls geneControls;
@@ -89,6 +91,10 @@ class App {
 
 	// Slider fill color, independent of button colors (grayscale or RGB).
 	color sliderColor = color(66);
+	color sliderTextColor = color(255);
+	color sliderBackgroundColor = color(33);
+	color sliderBackgroundHoverColor = color(44);
+	color sliderForegroundHoverColor = color(88);
 
 	// Border color for all UI group boxes (grayscale or RGB).
 	color uiGroupBorderColor = color(33);
@@ -113,15 +119,16 @@ class App {
 	Textlabel tPopSize;
 	Textlabel tGenNum;
 	PVector[] genMutRect;
-	Textlabel tExpSize;
 	Slider sExpSize;
-	Textlabel tInitialScale;
 	Slider sInitialScale;
+	Slider sDepthMax;
+	Slider sWidthMax;
 
 	PVector[] mainRect;
 	Button bMainEvolve;
 	Button bMainAgain;
 	Button bMainNew;
+	Button bShaderView;
 	Button bBack;
 
 	ArrayList<Button> selButs = new ArrayList<Button>();
@@ -208,13 +215,17 @@ class App {
 		pop.randomPop();
 	}
 
+	float shaderScaleValue() {
+		return pow(2, initialScale) * 0.5;
+	}
+
 	void updateShaderScale(float value) {
-		float nextScale = constrain(value, 0, 10);
+		float nextScale = constrain(value, -5, 5);
 		// ControlP5 can rebroadcast a value during layout; only apply changes.
 		if (nextScale == initialScale) return;
 		initialScale = nextScale;
 		for (Artwork artwork : pop.arts) {
-			artwork.dna.scale = initialScale;
+			artwork.dna.scale = shaderScaleValue();
 		}
 	}
 
@@ -259,18 +270,31 @@ class App {
 
 	// UPDATE LAYOUT
 
+	void windowResized() {
+		// A title-bar zoom can finish after Processing updates width/height.
+		// Refresh the UI bounds again once the resize events have settled.
+		resizeInputPending = true;
+		lastResizeInputTime = millis();
+	}
+
 	void refreshWindowInput() {
 		boolean resized = inputWidth != width || inputHeight != height;
 		boolean graphicsChanged = inputGraphics != g || inputGraphicsWidth != g.width || inputGraphicsHeight != g.height;
-		boolean lostFocus = inputFocused && !focused;
+		boolean focusChanged = inputFocused != focused;
 		inputFocused = focused;
+		if (resized || graphicsChanged) windowResized();
+		boolean resizeSettled = resizeInputPending && millis()-lastResizeInputTime >= 150 && !pointerGestureActive;
+		if (resizeSettled) {
+			resizeInputPending = false;
+		}
+		boolean recoverInput = resized || graphicsChanged || focusChanged || resizeSettled;
 
 		inputWidth = width;
 		inputHeight = height;
 		inputGraphics = g;
 		inputGraphicsWidth = g.width;
 		inputGraphicsHeight = g.height;
-		if (resized || graphicsChanged || lostFocus) {
+		if (recoverInput) {
 			separatorIsMoving = false;
 			lastIdPressed = -1;
 			isFocused = false;
@@ -281,8 +305,8 @@ class App {
 		for (ControlP5 controls : windows) {
 			// The OpenGL surface and sketch dimensions can update on different
 			// frames. Refresh ControlP5's hit bounds when either changes.
-			if (resized || graphicsChanged) controls.setGraphics(sketchRef, 0, 0);
-			if (resized || graphicsChanged || lostFocus) {
+			if (resized || graphicsChanged || resizeSettled) controls.setGraphics(sketchRef, 0, 0);
+			if (recoverInput) {
 				// Cancel stale input only when the window changes. Releasing on
 				// idle frames interferes with ControlP5's normal button clicks.
 				boolean wasVisible = controls.isVisible();
@@ -339,11 +363,23 @@ class App {
 		updateGenBlock();
 		updateMainBlock();
 		updateSelButs();
+		for (Slider slider : new Slider[] {sTimeFreq, sTimePos, sExpSize, sInitialScale}) {
+			styleSlider(slider);
+		}
+	}
+
+	void styleSlider(Slider slider) {
+		boolean hovered = slider.isMouseOver();
+		slider.setColorBackground(hovered ? sliderBackgroundHoverColor : sliderBackgroundColor)
+			.setColorForeground(hovered ? sliderForegroundHoverColor : sliderColor)
+			.setColorActive(sliderForegroundHoverColor);
+		slider.getCaptionLabel().setColor(sliderTextColor);
+		slider.getValueLabel().setColor(sliderTextColor);
 	}
 
 	void displayUI() {
     geneControls.layout(view == "GRID" && !isFocused && lastSel == -1,
-      uiPos.x, uiPos.y, uiSize.x, max(1, uiSize.y-uiblock*21));
+      uiPos.x, uiPos.y, uiSize.x, max(1, uiSize.y-uiblock*25));
 		displaySeparator();
 		displayGeneral();
 
@@ -354,35 +390,30 @@ class App {
 		}
 
 		if (view == "SINGLE") {
-			nd.display(pop.arts.get(focusedId).dna, uiPos.x, uiPos.y, uiSize.x, uiSize.x);
-
-      pushStyle();
-      noStroke();
-      fill(17,17,17,255);
-      rect(uiPos.x, uiPos.y+uiSize.y-uiblock*25, uiSize.x, 512);
-      popStyle();
+			float graphHeight = max(1, uiSize.y-uiblock*30);
+			nd.display(pop.arts.get(focusedId).dna, uiPos.x, uiPos.y, uiSize.x, graphHeight);
 
 			pushStyle();
 			stroke(uiGroupBorderColor);
 			noFill();
-			rect(uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*23);
+			rect(uiPos.x, uiPos.y, uiSize.x, graphHeight);
 			popStyle();
 
 
 
 		} else if (isFocused) {
-			pop.display(focusedId, uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*23);
+			pop.display(focusedId, uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*27);
 			pushStyle();
 			stroke(uiGroupBorderColor);
 			noFill();
-			rect(uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*23);
+			rect(uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*27);
 			popStyle();
 		} else if (lastSel != -1) {
-			pop.display(lastSel, uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*23);
+			pop.display(lastSel, uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*27);
 			pushStyle();
 			stroke(uiGroupBorderColor);
 			noFill();
-			rect(uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*23);
+			rect(uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*27);
 			popStyle();
 		} else {
 			geneControls.display();
@@ -433,8 +464,8 @@ class App {
 
 		tPopSize.setText("NUM: "+popSize);
 		tGenNum.setText("AA: "+aa);
-		tExpSize.setText("RES: "+expSize+"px");
-		tInitialScale.setText("SCALE: "+nf(initialScale, 1, 1));
+		sExpSize.setLabel("res "+expSize);
+		sInitialScale.setLabel("scale "+nf(initialScale, 1, 1));
 	}
 
 	void syncSelectionButtons() {
@@ -467,7 +498,6 @@ class App {
 		for (int i = 0; i < pop.arts.size(); i++) {
 			Artwork a = pop.arts.get(i);
 			if (a.isSelected) {
-				lastSel = i;
 				return true;
 			}
 		}
@@ -600,7 +630,7 @@ class App {
 		lastIdPressed = -1;
 		if (view == "GRID") checkArtsFocus();
 		if (mouseOver(separator*width,0, separatorWidth, height)) separatorIsMoving = true;
-		if (isFocused && !selButs.get(focusedId).isMouseOver()) {
+		if (view == "GRID" && isFocused && !selButs.get(focusedId).isMouseOver()) {
 			lastIdPressed = focusedId;
 			lastSel = focusedId;
 		}
@@ -627,12 +657,22 @@ class App {
 	void mouseReleased() {
 		pointerGestureActive = false;
 		if (view == "GRID") checkArtsFocus();
-		if (isFocused && lastIdPressed == focusedId && view != "SINGLE") {
-			view = "SINGLE";
+		if (view == "GRID" && isFocused && lastIdPressed == focusedId &&
+			!selButs.get(focusedId).isMouseOver()) {
+			developImage(focusedId);
 		}
 		lastIdPressed = -1;
 
 		if (separatorIsMoving) separatorIsMoving = false;
+	}
+
+	void developImage(int index) {
+		for (int i = 0; i < pop.arts.size(); i++) {
+			pop.arts.get(i).isSelected = i == index;
+		}
+		pop.evolve();
+		lastSel = index;
+		focusedId = index;
 	}
 
 	void mouseMoved() {
@@ -773,22 +813,50 @@ class App {
 		float settingsX = uiPos.x + uiblock*17;
 		float settingsY = uiPos.y + uiSize.y-uiblock*13;
 		int settingsWidth = max(1, int((uiSize.x-uiblock*18)/2));
-		sExpSize.setPosition(settingsX, settingsY+18)
-			.setSize(max(1, settingsWidth-uiblock), uiblock);
-		sInitialScale.setPosition(settingsX+settingsWidth, settingsY+18)
-			.setSize(max(1, settingsWidth-uiblock), uiblock);
+		sExpSize.setPosition(settingsX, settingsY+4)
+			.setSize(max(1, settingsWidth-uiblock), 22);
+		sInitialScale.setPosition(settingsX+settingsWidth, settingsY+4)
+			.setSize(max(1, settingsWidth-uiblock), 22);
+		// Native slider sizing resets caption alignment; restore it afterward.
+		for (Slider slider : new Slider[] {sExpSize, sInitialScale}) {
+			slider.getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER).setPadding(0, 0);
+			slider.getValueLabel().setVisible(false);
+		}
 
 		tPopSize.setPosition((int) uiPos.x + uiblock -3, (int) uiPos.y+uiSize.y-uiblock*13+uiblock-4);
 		tGenNum.setPosition((int) uiPos.x + uiblock*9 -3, (int) uiPos.y+uiSize.y-uiblock*13+uiblock-4);
-		tExpSize.setPosition(settingsX-3, settingsY+2);
-		tInitialScale.setPosition(settingsX+settingsWidth-3, settingsY+2);
 	}
 
 	void updateMainBlock() {
 		mainRect = new PVector[] {
-			new PVector((int) uiPos.x, (int) uiPos.y+uiSize.y-uiblock*20),
-			new PVector((int) uiSize.x, (int) uiblock*6)
+			new PVector((int) uiPos.x, (int) uiPos.y+uiSize.y-uiblock*24),
+			new PVector((int) uiSize.x, (int) uiblock*10)
 		};
+		Slider[] limitSliders = {sDepthMax, sWidthMax};
+		int limitWidth = max(1, int((uiSize.x-40)/3));
+		for (int i = 0; i < limitSliders.length; i++) {
+			Slider slider = limitSliders[i];
+			slider.setPosition(uiPos.x+10+i*(limitWidth+10), uiPos.y+uiSize.y-230)
+				.setSize(limitWidth, 22);
+			slider.getCaptionLabel().align(ControlP5.LEFT, ControlP5.CENTER).setPadding(5, 0);
+			slider.getValueLabel().align(ControlP5.RIGHT, ControlP5.CENTER).setPadding(9, 0).setVisible(true);
+			styleSlider(slider);
+		}
+		updateLimitLabels();
+		bShaderView.setPosition(uiPos.x+10+2*(limitWidth+10), uiPos.y+uiSize.y-230)
+			.setSize(limitWidth, 22);
+		boolean canView = view == "SINGLE" || (lastSel >= 0 && lastSel < pop.arts.size());
+		bShaderView.setLock(!canView)
+			.setColorBackground(view == "SINGLE" ? grayNormalDown : (canView ? grayNormal : grayDark))
+			.setColorActive(canView ? grayNormalDown : grayDark)
+			.setColorForeground(canView ? grayNormalOver : grayDark);
+		bShaderView.getCaptionLabel().setColor(canView ? color(255) : grayNormalDown);
+
+		boolean selected = isAnySelected();
+		bMainEvolve.setColorBackground(selected ? mainColor : grayDark)
+			.setColorActive(selected ? mainColorOver : grayDark)
+			.setColorForeground(selected ? mainColorDown : grayDark);
+		bMainEvolve.getCaptionLabel().setColor(selected ? color(255) : grayNormalDown);
 
 		int mid = (int) (uiSize.x - uiblock*4)/3;
 
@@ -799,7 +867,7 @@ class App {
 		bMainNew.setPosition(int(uiPos.x + uiSize.x - mid - uiblock), (int) uiPos.y+uiSize.y-uiblock*19)
 			.setSize(mid, uiblock*4);
 
-		bBack.setPosition(int(uiPos.x), (int) uiPos.y+uiSize.y-uiblock*25)
+		bBack.setPosition(int(uiPos.x), (int) uiPos.y+uiSize.y-uiblock*29)
 			.setSize((int) uiSize.x, uiblock*4);
 
 
@@ -824,10 +892,38 @@ class App {
 		
 	}
 
+	Slider addLimitSlider(String name, String label, float low, float high, float value) {
+		Slider slider = cp5time.addSlider(name);
+		slider.setBroadcast(false);
+		slider.setRange(low, high).setValue(value).setScrollSensitivity(0).setLabel(label);
+		slider.getCaptionLabel().setFont(controlFont);
+		slider.getValueLabel().setFont(controlFont);
+		styleSlider(slider);
+		slider.setBroadcast(true);
+		return slider;
+	}
+
+	void updateLimitLabels() {
+		sDepthMax.getValueLabel().setText(str(depth_max));
+		sWidthMax.getValueLabel().setText(str(width_max));
+	}
+
+	void changeLimit(String name, float value) {
+		if (name.equals("limit_depth_max")) depth_max = max(1, round(value));
+		if (name.equals("limit_width_max")) {
+			width_max = max(1, round(value));
+		}
+		updateLimitLabels();
+	}
+
 	void updateSelButs() {
 		for (int i = 0; i < selButs.size(); i++) {
 			if (i < popSize) {
 				selButs.get(i).setPosition((int) gridPos[i].x + uiblock, (int) gridPos[i].y + gridScale.y - uiblock*3);
+				boolean selected = pop.arts.get(i).isSelected;
+				selButs.get(i).setColorBackground(selected ? mainColor : grayNormal)
+					.setColorActive(selected ? mainColorDown : grayNormalDown)
+					.setColorForeground(selected ? mainColorOver : grayNormalOver);
 			}
 		}
 	}
@@ -978,28 +1074,42 @@ class App {
 		.plugTo(this)
 		.setRange(500,4000)
 		.setValue(expSize)
-		.setLabelVisible(false)
+		.setLabel("res")
+		.setLabelVisible(true)
 		.setColorActive(sliderColor)
 		.setColorBackground(grayDark)
 		.setColorForeground(sliderColor);
 
 		sInitialScale = cp5time.addSlider("initialScale")
 		.setScrollSensitivity(0)
-		.setRange(0,10)
+		.setRange(-5,5)
 		.setValue(initialScale)
-		.setLabelVisible(false)
+		.setLabel("scale")
+		.setLabelVisible(true)
 		.setColorActive(sliderColor)
 		.setColorBackground(grayDark)
 		.setColorForeground(sliderColor);
 
+		sExpSize.getCaptionLabel().setFont(controlFont);
+		sInitialScale.getCaptionLabel().setFont(controlFont);
+		sDepthMax = addLimitSlider("limit_depth_max", "depth", 1, 32, depth_max);
+		sWidthMax = addLimitSlider("limit_width_max", "width", 1, 32, width_max);
+
 		tGenNum = cp5time.addTextlabel("genenum").setFont(controlFont).setColor(grayNormal);
 		tPopSize = cp5time.addTextlabel("genepopsize").setFont(controlFont).setColor(grayNormal);
-		tExpSize = cp5time.addTextlabel("genemutrate").setFont(controlFont).setColor(grayNormal);
-		tInitialScale = cp5time.addTextlabel("initialscalelabel").setFont(controlFont).setColor(grayNormal);
 
 
 
 		cp5main = new ControlP5(sketchRef);
+		bShaderView = cp5time.addButton("actionShaderView");
+		bShaderView.setLabelVisible(true)
+			.setLabel("graph")
+			.plugTo(this)
+			.setColorBackground(grayNormal)
+			.setColorActive(grayNormalDown)
+			.setColorForeground(grayNormalOver);
+		bShaderView.getCaptionLabel().setColor(color(255)).setFont(controlFont)
+			.align(ControlP5.CENTER, ControlP5.CENTER);
 
 		bMainEvolve = cp5time.addButton("actionMainEvolve");
 		bMainEvolve.setLabelVisible(true)
@@ -1050,6 +1160,18 @@ class App {
 
 
 	/////////// ACTIONS
+
+	void actionShaderView() {
+		goSingle = false;
+		lastIdPressed = -1;
+		if (view == "SINGLE") {
+			view = "GRID";
+		} else if (lastSel >= 0 && lastSel < pop.arts.size()) {
+			focusedId = lastSel;
+			isFocused = false;
+			view = "SINGLE";
+		}
+	}
 
 	void actionBack() {
 		goSingle = true;
@@ -1130,12 +1252,13 @@ class App {
 	void actionMainEvolve() {
 		if (isAnySelected()) {
 			pop.evolve();
+			lastSel = pop.lastParentIndex;
 		}
-    lastSel = -1;
 	}
 
 	void actionMainAgain() {
 		pop.evolveAgain();
+		lastSel = pop.lastParentIndex;
 	}
 
 
@@ -1144,6 +1267,10 @@ class App {
 
 void controlEvent(ControlEvent theEvent) {
   if (theEvent.isController()) {
+    if (theEvent.controller().getName().startsWith("limit_")) {
+      if (app != null) app.changeLimit(theEvent.controller().getName(), theEvent.controller().getValue());
+      return;
+    }
     if (theEvent.controller().getName().equals("initialScale")) {
       if (app != null) app.updateShaderScale(theEvent.controller().getValue());
       return;

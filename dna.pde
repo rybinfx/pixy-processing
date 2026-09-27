@@ -1,14 +1,14 @@
 class DNA {
 	ArrayList<Gene> genes;
-	float scale = 4;
+	float scale = 0.5;
 	PVector offset = new PVector();
 	float hueOffset;
 	ArrayList<PVector> args = new ArrayList<PVector>();
 
 	String code;
 
-	float complexity = 6;
-	float mutationRate = 1;
+	int depthLimit = 1;
+	int widthLimit = 1;
 
 	DNA() {
 	}	
@@ -22,14 +22,18 @@ class DNA {
 	// MAIN METHODS
 
 	void construct() {
+		enforceGraphLimits();
 		code = "vec3 col = " + genes.get(0).get() + ";";
+	}
+
+	void updateGraphLimits() {
+		depthLimit = max(1, depth_max);
+		widthLimit = max(1, width_max);
 	}
 
 	void randomDNA() {
 		args = new ArrayList<PVector>();
-		// scale = random(4,16);
-		complexity = random(3,16);
-		// complexity = random(4,16);
+		updateGraphLimits();
 		hueOffset = random(1);
 		genes = new ArrayList<Gene>();
 		addGene();
@@ -41,6 +45,8 @@ class DNA {
 	DNA sex(DNA d1, DNA d2) {
 		DNA p1 = d1.copy();
 		DNA p2 = d2.copy();
+		p1.updateGraphLimits();
+		p1.enforceGraphLimits();
 
 		for (int i = 0; i < 5+app.mutationRate/10; i++) {
 			sSwap(p1, p1.genes.get( (int) random(p1.genes.size()) ), p2, p2.genes.get( (int) random(p2.genes.size()) ) );
@@ -83,11 +89,15 @@ class DNA {
 		p2.updAd(p2.genes.get(ind));
 
 		p2.sortArgs();
+		p1.enforceGraphLimits();
+		p2.enforceGraphLimits();
 	}
 
 	// MUTATION
 
 	void mutate() {
+		updateGraphLimits();
+		enforceGraphLimits();
 		mutateArgs();
 		mutateParameters();
 		for (int i = 0; i < genes.size()*(app.mutationRate/100*0.05); i++) {
@@ -100,6 +110,7 @@ class DNA {
 			if (act == 2) changeGene(g);
 			if (act == 3) mSwap(g,g2);
 			if (act == 4) mCopy(g,g2);
+			enforceGraphLimits();
 
 		}
 		sortArgs();
@@ -111,11 +122,11 @@ class DNA {
 		ArrayList<PVector> sorted = new ArrayList<PVector>();
 		for (Gene g : genes) {
 			if (g.type == "rndm" || g.type == "rndm3") {
-				if (sorted.size() < 512) {
+				if (sorted.size() < geneArgumentLimit) {
 					sorted.add( args.get(g.argsBinder) );
 					g.argsBinder = sorted.size()-1;
 				} else {
-					g.argsBinder = 511;
+					g.argsBinder = geneArgumentLimit-1;
 				}
 			}
 		}
@@ -135,6 +146,9 @@ class DNA {
 	}
 
 	void mSwap(Gene g1, Gene g2) {
+		// Swapping a branch with itself or one of its descendants removes the
+		// second target during the first replacement. Only swap disjoint branches.
+		if (containsBranch(g1, g2) || containsBranch(g2, g1)) return;
 		ArrayList<Gene> b1 = grabBranch(g1);
 		ArrayList<Gene> b2 = grabBranch(g2);
 
@@ -145,31 +159,23 @@ class DNA {
 		updAd(genes.get(ind));
 
 		ind = geneIndex(g2);
-		if (ind >= 0) {
-			deleteBranch(g2);
-			injectBranch(ind, b1);
-			genes.get(ind).setAdress(g2.adress);
-			updAd(genes.get(ind));
-		} else println("Its okay");
+		deleteBranch(g2);
+		injectBranch(ind, b1);
+		genes.get(ind).setAdress(g2.adress);
+		updAd(genes.get(ind));
 
 	}
 
+	boolean containsBranch(Gene root, Gene node) {
+		return root.adress.size() <= node.adress.size() &&
+			node.adress.subList(0, root.adress.size()).equals(root.adress);
+	}
+
 	void mChange(Gene g) {
-		int index = geneIndex(g);
 		boolean newIsValue;
 		if (isValue(g)) newIsValue = random(1) > 0.2;
 		else newIsValue = random(1) < 0.2;
-		Gene newGene = getGene(newIsValue);
-		int toadd = newGene.nodes-g.nodes;
-		newGene.setAdress(g.adress);
-		genes.set(index,newGene);
-		if (toadd > 0) {
-			fillNode(newGene,toadd);
-			updAd(newGene);
-		} else if (toadd < 0) {
-			clearNode(newGene, abs(toadd));
-			updAd(newGene);
-		}
+		replaceGene(g, getGene(newIsValue));
 	}
 
 	void mRemoveNode(Gene g) {
@@ -259,59 +265,71 @@ class DNA {
 	// PICK GENES
 
 	// Draw directly from relative weights. Zero-weight entries are never picked.
-	int pickWeighted(float[] weights) {
-		float total = weightTotal(weights);
+	int pickWeighted(String[] names) {
+		float total = geneWeightTotal(names);
 		if (total <= 0) return -1;
 		float pick = random(total);
 		int last = -1;
-		for (int i = 0; i < weights.length; i++) {
-			if (weights[i] <= 0) continue;
+		for (int i = 0; i < names.length; i++) {
+			float weight = geneProbability(names[i]);
+			if (weight <= 0) continue;
 			last = i;
-			pick -= weights[i];
+			pick -= weight;
 			if (pick < 0) return i;
 		}
 		return last;
 	}
 
 	String getVal() {
-		int index = pickWeighted(genesValuesRate);
+		int index = pickWeighted(genesValues);
 		return index < 0 ? "x" : genesValues[index];
 	}
 
-	String getMethod() {
-		// Groups organize the UI only; every operation shares one weighted pool.
-		float total = 0;
-		for (float[] weights : genesMethodsRate) total += weightTotal(weights);
-		if (total <= 0) return getVal();
-
-		float pick = random(total);
-		String last = null;
-		for (int group = 0; group < genesMethods.length; group++) {
-			for (int item = 0; item < genesMethods[group].length; item++) {
-				float weight = genesMethodsRate[group][item];
-				if (weight <= 0) continue;
-				last = genesMethods[group][item];
-				pick -= weight;
-				if (pick < 0) return last;
-			}
-		}
-		return last;
+	String getCandidate() {
+		int index = pickWeighted(geneFunctionPool);
+		return index < 0 ? getVal() : geneFunctionPool[index];
 	}
 
 	Gene getGene(boolean isVal) {
 		if (isVal) {
 			return new Gene(this, getVal());
 		}
-		return new Gene(this, getMethod());
+		return new Gene(this, getCandidate());
 	}
 
-	// COMPLEXITY FORMULA
+	boolean chooseValue(int depth, int nextLevelWidth) {
+		if (depthLimit <= 1 || depth >= depthLimit) return true;
+		// Both ramps are linear. Width counts all children already committed
+		// to the next level, including siblings not yet visited by recursion.
+		float depthProgress = constrain((float)(depth-1)/(depthLimit-1), 0, 1);
+		float widthProgress = constrain((float)nextLevelWidth/widthLimit, 0, 1);
+		float functionChance = 1-max(depthProgress, widthProgress);
+		return random(1) >= functionChance;
+	}
 
-	boolean isValue(float depth) {
-		float test = 1-((depth-2)/complexity);
-		test = pow(test, 2);
-		if (random(1) > test) return true;
-		return false;
+	// End branches that would exceed depth or the number of nodes in a level.
+	void enforceGraphLimits() {
+		ArrayList<Gene> capped = new ArrayList<Gene>();
+		int[] levelWidths = new int[depthLimit+2];
+		levelWidths[1] = 1;
+		appendCapped(genes.get(0), capped, levelWidths);
+		genes = capped;
+		sortArgs();
+	}
+
+	void appendCapped(Gene source, ArrayList<Gene> capped, int[] levelWidths) {
+		if (source.nodes > 0 && (source.depth >= depthLimit || levelWidths[source.depth+1]+source.nodes > widthLimit)) {
+			Gene leaf = getGene(true);
+			leaf.setAdress(new ArrayList<Integer>(source.adress));
+			capped.add(leaf);
+			return;
+		}
+		capped.add(source);
+		if (source.nodes > 0) levelWidths[source.depth+1] += source.nodes;
+		ArrayList<Gene> children = source.getChildren();
+		for (int i = 0; i < children.size(); i++) {
+			appendCapped(children.get(i), capped, levelWidths);
+		}
 	}
 
 	// GENERAL METHODS
@@ -357,18 +375,23 @@ class DNA {
 	// CONSTRUCTION METHODS
 
 	void addGene() {
-		addGene(0, new ArrayList<Integer>());
+		int[] levelWidths = new int[depthLimit+2];
+		levelWidths[1] = 1;
+		addGene(0, new ArrayList<Integer>(), levelWidths);
 	}
 
-	void addGene(int n, ArrayList<Integer> a) {
+	void addGene(int n, ArrayList<Integer> a, int[] levelWidths) {
 
-		genes.add(getGene(isValue(a.size()+1)));
-		Gene lastGene = genes.get(genes.size()-1);
+		int depth = a.size()+1;
+		Gene lastGene = getGene(chooseValue(depth, levelWidths[depth+1]));
+		if (lastGene.nodes > 0 && levelWidths[depth+1]+lastGene.nodes > widthLimit) lastGene = getGene(true);
+		levelWidths[depth+1] += lastGene.nodes;
+		genes.add(lastGene);
 		ArrayList<Integer> newAdress = new ArrayList<Integer>(a);
 		newAdress.add(n);
 		lastGene.setAdress(newAdress);
 
-		for (int i = 0; i < lastGene.nodes; i++) addGene(i,lastGene.adress);
+		for (int i = 0; i < lastGene.nodes; i++) addGene(i,lastGene.adress,levelWidths);
 	}
 
 	// GENE MANIPULATION
@@ -391,33 +414,27 @@ class DNA {
 	}
 
 	void changeGene(Gene g) {
+		replaceGene(g, getGene(isValue(g)));
+	}
+
+	void replaceGene(Gene g, Gene newGene) {
 		int index = geneIndex(g);
-
-		if (isValue(g)) {
-			genes.set(index, getGene(true));
-		} else {
-			genes.set(index, getGene(false));
-		}
-
-		Gene newGene = genes.get(index);
 		newGene.setAdress(new ArrayList<Integer>(g.adress));
-
 		if (newGene.nodes < g.nodes) {
-			int todelete = g.nodes - newGene.nodes;
-			for (int i = todelete; i > 0; i--) {
-				ArrayList<Integer> deladress = new ArrayList<Integer>(newGene.adress);
-				deladress.add(g.nodes-i);
+			for (int i = g.nodes-1; i >= newGene.nodes; i--) {
+				ArrayList<Integer> deladress = new ArrayList<Integer>(g.adress);
+				deladress.add(i);
 				deleteBranch(getGeneByAdress(deladress));
 			}
 		} else if (newGene.nodes > g.nodes) {
-			int toadd = newGene.nodes - g.nodes;
-			for (int i = toadd; i >= 1; i--) {
-					genes.add(index+1,getGene(true));
-					ArrayList<Integer> parentAdress = new ArrayList<Integer>(newGene.adress);
-					parentAdress.add(g.nodes+i-1);
-					genes.get(index+1).setAdress(parentAdress);
+			// New children belong after the existing subtrees in preorder.
+			int insertion = branchIndex(g)[1]+1;
+			for (int i = g.nodes; i < newGene.nodes; i++) {
+				genes.add(insertion++, getGene(true));
 			}
 		}
+		genes.set(index, newGene);
+		updAd(newGene);
 	}
 
 	void changeValToMeth(Gene g) {
@@ -490,6 +507,8 @@ class DNA {
 	DNA copy() {
 
 		DNA temp = new DNA();
+		temp.depthLimit = depthLimit;
+		temp.widthLimit = widthLimit;
 		temp.genes = copyGenes(temp);
 		temp.code = code;
 		temp.scale = scale;
