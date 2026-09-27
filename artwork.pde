@@ -14,8 +14,6 @@ class Artwork {
 	PShader shader;
 	String[] shaderCode = fragmentShader.clone();
 
-	ArrayList<PVector> animatedArgs;
-
 	boolean isSelected = false;
 	
 	DNA dna;
@@ -37,6 +35,7 @@ class Artwork {
 
 	void randomDNA() {
 		dna = new DNA("RANDOM");
+		dna.scale = p.p.initialScale;
 		compileShader();
 	}
 
@@ -49,7 +48,7 @@ class Artwork {
 
 	void display(float x_, float y_, float w_, float h_) {
 		update(x_,y_,w_,h_);
-		setShader();
+		setShader(g);
 		shader(shader);
 		rect(x_,y_,w,h);
 		resetShader();
@@ -62,13 +61,17 @@ class Artwork {
 
 	}
 
-	void setShader() {
+	void setShader(PGraphics target) {
 		shader.set("u_g_off", g_offset.x, g_offset.y);
-		shader.set("u_g_scale", g_scale);
+		// gl_FragCoord uses physical pixels; layout and mouse coordinates do not.
+		shader.set("u_g_scale", g_scale / target.pixelDensity);
 		shader.set("u_off", dna.offset.x, dna.offset.y);
 		shader.set("u_scale", dna.scale);
 		shader.set("u_hoff", dna.hueOffset);
-		shader.set("u_args", argsToFloat(animateArgs()));
+		if (!dna.args.isEmpty()) shader.set("u_args", argsToFloat(dna.args));
+		if (dna.code.contains("g_time(") || dna.code.contains("g_sintime(")) {
+			shader.set("u_time", app.appTime);
+		}
 
 		shader.set("u_aa",app.aa);
 	}
@@ -88,16 +91,6 @@ class Artwork {
 			g_offset = new PVector(-x/w - 0.5, -(dh_ - y - h - (w-h)/2)/w - 0.5);
 			g_offset.mult(4);
 		}
-	}
-
-	ArrayList<PVector> animateArgs() {
-		animatedArgs = new ArrayList<PVector>();
-		for (PVector a : dna.args) {
-			float addTime = sin((app.appTime) * 2 * PI);
-			PVector addTimeV = new PVector(addTime,addTime,addTime);
-			animatedArgs.add(PVector.add(a,addTimeV));
-		}
-		return animatedArgs;
 	}
 
 	// CONTROLS
@@ -134,9 +127,8 @@ class Artwork {
 	void render(String path) {
 		update(0,0,app.expSize,app.expSize,app.expSize);
 
-		setShader();
-
 		renderer.beginDraw();
+		setShader(renderer);
 		renderer.shader(shader);
 		renderer.rect(0,0,app.expSize,app.expSize);
 		renderer.endDraw();
@@ -145,12 +137,11 @@ class Artwork {
 	}
 
 	void export(String path) {
-		PGraphics export = createGraphics(app.expSize,app.expSize,P2D);
+		PGraphics export = createExportGraphics(app.expSize);
 		update(0,0,app.expSize,app.expSize,app.expSize);
 
-		setShader();
-
 		export.beginDraw();
+		setShader(export);
 		export.shader(shader);
 		export.rect(0,0,app.expSize,app.expSize);
 		export.endDraw();

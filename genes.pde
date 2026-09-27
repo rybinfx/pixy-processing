@@ -5,7 +5,7 @@ String[] genesValues = new String[] {
   //"rndm2",
 	"rndm3"
 };
-float[] genesValuesRate = new float[] {1, 1, 0.5, 0.5};
+float[] genesValuesRate = new float[] {1, 1, 0, 0};
 
 
 String[] genesBasicMath = new String[] {
@@ -14,7 +14,7 @@ String[] genesBasicMath = new String[] {
 	"mult",
 	"div"
 };
-float[] genesBasicMathRate = new float[] {1, 1, 1, 1};
+float[] genesBasicMathRate = new float[] {0, 0, 0, 0};
 
 String[] genesExponential = new String[] {
 	"pow2",
@@ -24,7 +24,7 @@ String[] genesExponential = new String[] {
 	"2pow",
 	"2log"
 };
-float[] genesExponentialRate = new float[] {1, 1, 0.3, 0.3, 0.3, 0.3};
+float[] genesExponentialRate = new float[] {0, 0, 0, 0, 0, 0};
 
 
 String[] genesRound = new String[] {
@@ -34,7 +34,7 @@ String[] genesRound = new String[] {
 	"ceil",
 	"round"
 };
-float[] genesRoundRate = new float[] {0.5, 1, 1, 1, 1, 1};
+float[] genesRoundRate = new float[] {0, 0, 0, 0, 0};
 
 String[] genesTrig = new String[] {
 	"sin",
@@ -44,7 +44,7 @@ String[] genesTrig = new String[] {
 	"acos",
 	"atan"
 };
-float[] genesTrigRate = new float[] {1, 1, 0.1, 0.1, 0.1, 0.5};
+float[] genesTrigRate = new float[] {0, 0, 0, 0, 0, 0};
 
 
 String[] genesConstrain = new String[] {
@@ -53,13 +53,13 @@ String[] genesConstrain = new String[] {
 	"clamp",
 	"abs"
 };
-float[] genesConstrainRate = new float[] {1, 1, 0.5, 1};
+float[] genesConstrainRate = new float[] {0, 0, 0, 0};
 
 
 String[] genesMix = new String[] {
 	"mix"
 };
-float[] genesMixRate = new float[] {1};
+float[] genesMixRate = new float[] {0};
 
 String[] genesLogic = new String[] {
 	"if",
@@ -67,7 +67,7 @@ String[] genesLogic = new String[] {
 	"or",
 	"xor"
 };
-float[] genesLogicRate = new float[] {1,1,1,1};
+float[] genesLogicRate = new float[] {0, 0, 0, 0};
 
 
 String[] genesElse = new String[] {
@@ -78,7 +78,13 @@ String[] genesElse = new String[] {
 	"setV"
 	//"noise2"
 };
-float[] genesElseRate = new float[] {1, 1, 1, 1, 1, 1, 1};
+float[] genesElseRate = new float[] {0, 0, 0, 0, 0};
+
+String[] genesTime = new String[] {
+	"time",
+	"sintime"
+};
+float[] genesTimeRate = new float[] {0, 0};
 
 
 String[][] genesMethods = new String[][] {
@@ -89,10 +95,9 @@ String[][] genesMethods = new String[][] {
 	genesConstrain,
 	genesMix,
 	genesLogic,
-	genesElse
+	genesElse,
+	genesTime
 };
-//float[] genesMethodsGroupRate = new float[] {1, 0.01, 0.1, 0.1, 0.1, 0.1, 0.1, 0.05};
-float[] genesMethodsGroupRate = new float[] {1.5, 0.01, 0.01, 0.1, 0.1, 0.1, 0.1, 0.1};
 
 
 float[][] genesMethodsRate = new float[][] {
@@ -103,7 +108,8 @@ float[][] genesMethodsRate = new float[][] {
 	genesConstrainRate,
 	genesMixRate,
 	genesLogicRate,
-	genesElseRate
+	genesElseRate,
+	genesTimeRate
 };
 
 String getMethodGroupName(int n) {
@@ -115,6 +121,7 @@ String getMethodGroupName(int n) {
 	if (n == 5) return "Mix";
 	if (n == 6) return "Logic";
 	if (n == 7) return "Else";
+	if (n == 8) return "Time";
 	return "Oops";
 }
 
@@ -127,6 +134,7 @@ class Gene {
 	int nodes = 0;
 
 	int argsBinder;
+	float phaseOffset;
 
 	Gene(DNA p_, String type_) {
 		p = p_;
@@ -134,6 +142,11 @@ class Gene {
 
 		if (type == "x") nodes = 0;
 		if (type == "y") nodes = 0;
+		if (type == "time") nodes = 0;
+		if (type == "sintime") {
+			nodes = 0;
+			phaseOffset = random(TWO_PI);
+		}
 
 		if (type == "add") nodes = 2;
 		if (type == "sub") nodes = 2;
@@ -204,6 +217,7 @@ class Gene {
 	}
 
 	String get() {
+		if (type == "sintime") return "g_sintime(" + Float.toString(phaseOffset) + ")";
 
 		String temp = "";
 
@@ -240,6 +254,7 @@ class Gene {
 		temp.depth = depth;
 		temp.nodes = nodes;
 		temp.argsBinder = argsBinder;
+		temp.phaseOffset = phaseOffset;
 		return temp;
 	}
 

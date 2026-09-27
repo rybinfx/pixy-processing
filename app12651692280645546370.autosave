@@ -10,7 +10,6 @@ class App {
 	Pop pop;
 	int aa = 1;
 	int expSize = 1000;
-	float initialScale = 4;
 
 	int lastSel = -1;
 	
@@ -23,10 +22,6 @@ class App {
 	int inputWidth = -1;
 	int inputHeight = -1;
 	boolean inputFocused = true;
-	PGraphics inputGraphics;
-	int inputGraphicsWidth = -1;
-	int inputGraphicsHeight = -1;
-	boolean pointerGestureActive = false;
 
 	NodeDisplay nd = new NodeDisplay();
 	GeneControls geneControls;
@@ -82,13 +77,13 @@ class App {
 	color mainColorOver = color(187,77,255);
 	color mainColorDown = color(93,0,158);
 
-	color grayNormal = color(120);
-	color grayNormalOver = color(150);
-	color grayNormalDown = color(100);
+	color grayNormal = color(133);
+	color grayNormalOver = color(122);
+	color grayNormalDown = color(133);
 	color grayDark = color(33);
 
 	// Slider fill color, independent of button colors (grayscale or RGB).
-	color sliderColor = color(66);
+	color sliderColor = color(99);
 
 	// Border color for all UI group boxes (grayscale or RGB).
 	color uiGroupBorderColor = color(33);
@@ -115,8 +110,6 @@ class App {
 	PVector[] genMutRect;
 	Textlabel tExpSize;
 	Slider sExpSize;
-	Textlabel tInitialScale;
-	Slider sInitialScale;
 
 	PVector[] mainRect;
 	Button bMainEvolve;
@@ -208,16 +201,6 @@ class App {
 		pop.randomPop();
 	}
 
-	void updateShaderScale(float value) {
-		float nextScale = constrain(value, 0, 10);
-		// ControlP5 can rebroadcast a value during layout; only apply changes.
-		if (nextScale == initialScale) return;
-		initialScale = nextScale;
-		for (Artwork artwork : pop.arts) {
-			artwork.dna.scale = initialScale;
-		}
-	}
-
 	// DISPLAY POP
 
 	void displayPop() {
@@ -261,43 +244,33 @@ class App {
 
 	void refreshWindowInput() {
 		boolean resized = inputWidth != width || inputHeight != height;
-		boolean graphicsChanged = inputGraphics != g || inputGraphicsWidth != g.width || inputGraphicsHeight != g.height;
 		boolean lostFocus = inputFocused && !focused;
 		inputFocused = focused;
+		if (!resized && !lostFocus) return;
 
 		inputWidth = width;
 		inputHeight = height;
-		inputGraphics = g;
-		inputGraphicsWidth = g.width;
-		inputGraphicsHeight = g.height;
-		if (resized || graphicsChanged || lostFocus) {
-			separatorIsMoving = false;
-			lastIdPressed = -1;
-			isFocused = false;
-			pointerGestureActive = false;
-		}
+		separatorIsMoving = false;
+		lastIdPressed = -1;
+		isFocused = false;
+		mousePressed = false;
 
 		ControlP5[] windows = {cp5time, cp5gen, cp5main, cp5back, selectButtons};
 		for (ControlP5 controls : windows) {
-			// The OpenGL surface and sketch dimensions can update on different
-			// frames. Refresh ControlP5's hit bounds when either changes.
-			if (resized || graphicsChanged) controls.setGraphics(sketchRef, 0, 0);
-			if (resized || graphicsChanged || lostFocus) {
-				// Cancel stale input only when the window changes. Releasing on
-				// idle frames interferes with ControlP5's normal button clicks.
-				boolean wasVisible = controls.isVisible();
-				controls.setBroadcast(false);
-				try {
-					controls.show();
-					controls.getPointer().set(-1, -1).released();
-					controls.getWindow().resetMouseOver();
-				} finally {
-					controls.setVisible(wasVisible);
-					controls.setBroadcast(true);
-				}
+			// A native resize can consume RELEASE. Clear ControlP5's mouse lock
+			// as well as the sketch's drag state, without firing button actions.
+			boolean wasVisible = controls.isVisible();
+			controls.setBroadcast(false);
+			try {
+				controls.show();
+				controls.getWindow().resetMouseOver();
+				controls.getPointer().set(-1, -1).released();
+				controls.getPointer().set(mouseX, mouseY);
+				if (resized) controls.setGraphics(sketchRef, 0, 0);
+			} finally {
+				controls.setVisible(wasVisible);
+				controls.setBroadcast(true);
 			}
-			// Keep hover coordinates current independently of CP5's event cache.
-			controls.getPointer().set(mouseX, mouseY);
 		}
 	}
 
@@ -434,7 +407,6 @@ class App {
 		tPopSize.setText("NUM: "+popSize);
 		tGenNum.setText("AA: "+aa);
 		tExpSize.setText("RES: "+expSize+"px");
-		tInitialScale.setText("SCALE: "+nf(initialScale, 1, 1));
 	}
 
 	void syncSelectionButtons() {
@@ -596,7 +568,6 @@ class App {
 	// Global UI Events
 
 	void mousePressed() {
-		pointerGestureActive = true;
 		lastIdPressed = -1;
 		if (view == "GRID") checkArtsFocus();
 		if (mouseOver(separator*width,0, separatorWidth, height)) separatorIsMoving = true;
@@ -607,7 +578,7 @@ class App {
 	}
 
 	void mouseIsPressed() {
-		if (!pointerGestureActive || !mousePressed) {
+		if (!focused || !mousePressed) {
 			separatorIsMoving = false;
 			return;
 		}
@@ -625,7 +596,6 @@ class App {
 	}
 
 	void mouseReleased() {
-		pointerGestureActive = false;
 		if (view == "GRID") checkArtsFocus();
 		if (isFocused && lastIdPressed == focusedId && view != "SINGLE") {
 			view = "SINGLE";
@@ -770,18 +740,12 @@ class App {
 		bGenRen.setPosition((int) uiPos.x + uiblock*17 + abs(uiSize.x-(uiblock*18))/2+uiblock/2, (int) uiPos.y+uiSize.y-uiblock*13+uiblock*3)
 			.setSize((int) abs(uiSize.x-( uiblock*18))/2-uiblock/2,uiblock*2);
 
-		float settingsX = uiPos.x + uiblock*17;
-		float settingsY = uiPos.y + uiSize.y-uiblock*13;
-		int settingsWidth = max(1, int((uiSize.x-uiblock*18)/2));
-		sExpSize.setPosition(settingsX, settingsY+18)
-			.setSize(max(1, settingsWidth-uiblock), uiblock);
-		sInitialScale.setPosition(settingsX+settingsWidth, settingsY+18)
-			.setSize(max(1, settingsWidth-uiblock), uiblock);
+		sExpSize.setPosition((int) uiPos.x + uiblock*27, (int) uiPos.y+uiSize.y-uiblock*13+uiblock*1)
+			.setSize((int) uiSize.x - uiblock*28, (int) uiblock*1);
 
 		tPopSize.setPosition((int) uiPos.x + uiblock -3, (int) uiPos.y+uiSize.y-uiblock*13+uiblock-4);
 		tGenNum.setPosition((int) uiPos.x + uiblock*9 -3, (int) uiPos.y+uiSize.y-uiblock*13+uiblock-4);
-		tExpSize.setPosition(settingsX-3, settingsY+2);
-		tInitialScale.setPosition(settingsX+settingsWidth-3, settingsY+2);
+		tExpSize.setPosition((int) uiPos.x + uiblock*17 -3, (int) uiPos.y+uiSize.y-uiblock*13+uiblock-4);
 	}
 
 	void updateMainBlock() {
@@ -884,7 +848,6 @@ class App {
 		bTimeStop.setLabelVisible(true);
 
 		sTimeFreq = cp5time.addSlider("timeFreq")
-		.setScrollSensitivity(0)
 		.plugTo(this)
 		.setRange(0.5,60)
 		.setValue(5)
@@ -893,7 +856,6 @@ class App {
 		.setColorBackground(grayDark)
 		.setColorForeground(sliderColor);
 		sTimePos = cp5time.addSlider("appTime")
-		.setScrollSensitivity(0)
 		.plugTo(this)
 		.setLabelVisible(false)
 		.setRange(0,1)
@@ -974,7 +936,6 @@ class App {
 			.setFont(controlFont);
 
 		sExpSize = cp5time.addSlider("expSize")
-		.setScrollSensitivity(0)
 		.plugTo(this)
 		.setRange(500,4000)
 		.setValue(expSize)
@@ -983,19 +944,9 @@ class App {
 		.setColorBackground(grayDark)
 		.setColorForeground(sliderColor);
 
-		sInitialScale = cp5time.addSlider("initialScale")
-		.setScrollSensitivity(0)
-		.setRange(0,10)
-		.setValue(initialScale)
-		.setLabelVisible(false)
-		.setColorActive(sliderColor)
-		.setColorBackground(grayDark)
-		.setColorForeground(sliderColor);
-
 		tGenNum = cp5time.addTextlabel("genenum").setFont(controlFont).setColor(grayNormal);
 		tPopSize = cp5time.addTextlabel("genepopsize").setFont(controlFont).setColor(grayNormal);
 		tExpSize = cp5time.addTextlabel("genemutrate").setFont(controlFont).setColor(grayNormal);
-		tInitialScale = cp5time.addTextlabel("initialscalelabel").setFont(controlFont).setColor(grayNormal);
 
 
 
@@ -1144,10 +1095,6 @@ class App {
 
 void controlEvent(ControlEvent theEvent) {
   if (theEvent.isController()) {
-    if (theEvent.controller().getName().equals("initialScale")) {
-      if (app != null) app.updateShaderScale(theEvent.controller().getValue());
-      return;
-    }
     if (theEvent.controller().getName().startsWith("geneProbability")) {
       if (app != null && app.geneControls != null) {
         app.geneControls.change(theEvent.controller().getId(), theEvent.controller().getValue());

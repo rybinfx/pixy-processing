@@ -23,10 +23,6 @@ class App {
 	int inputWidth = -1;
 	int inputHeight = -1;
 	boolean inputFocused = true;
-	PGraphics inputGraphics;
-	int inputGraphicsWidth = -1;
-	int inputGraphicsHeight = -1;
-	boolean pointerGestureActive = false;
 
 	NodeDisplay nd = new NodeDisplay();
 	GeneControls geneControls;
@@ -83,8 +79,8 @@ class App {
 	color mainColorDown = color(93,0,158);
 
 	color grayNormal = color(120);
-	color grayNormalOver = color(150);
-	color grayNormalDown = color(100);
+	color grayNormalOver = color(130);
+	color grayNormalDown = color(140);
 	color grayDark = color(33);
 
 	// Slider fill color, independent of button colors (grayscale or RGB).
@@ -261,43 +257,33 @@ class App {
 
 	void refreshWindowInput() {
 		boolean resized = inputWidth != width || inputHeight != height;
-		boolean graphicsChanged = inputGraphics != g || inputGraphicsWidth != g.width || inputGraphicsHeight != g.height;
 		boolean lostFocus = inputFocused && !focused;
 		inputFocused = focused;
+		if (!resized && !lostFocus) return;
 
 		inputWidth = width;
 		inputHeight = height;
-		inputGraphics = g;
-		inputGraphicsWidth = g.width;
-		inputGraphicsHeight = g.height;
-		if (resized || graphicsChanged || lostFocus) {
-			separatorIsMoving = false;
-			lastIdPressed = -1;
-			isFocused = false;
-			pointerGestureActive = false;
-		}
+		separatorIsMoving = false;
+		lastIdPressed = -1;
+		isFocused = false;
+		mousePressed = false;
 
 		ControlP5[] windows = {cp5time, cp5gen, cp5main, cp5back, selectButtons};
 		for (ControlP5 controls : windows) {
-			// The OpenGL surface and sketch dimensions can update on different
-			// frames. Refresh ControlP5's hit bounds when either changes.
-			if (resized || graphicsChanged) controls.setGraphics(sketchRef, 0, 0);
-			if (resized || graphicsChanged || lostFocus) {
-				// Cancel stale input only when the window changes. Releasing on
-				// idle frames interferes with ControlP5's normal button clicks.
-				boolean wasVisible = controls.isVisible();
-				controls.setBroadcast(false);
-				try {
-					controls.show();
-					controls.getPointer().set(-1, -1).released();
-					controls.getWindow().resetMouseOver();
-				} finally {
-					controls.setVisible(wasVisible);
-					controls.setBroadcast(true);
-				}
+			// A native resize can consume RELEASE. Clear ControlP5's mouse lock
+			// as well as the sketch's drag state, without firing button actions.
+			boolean wasVisible = controls.isVisible();
+			controls.setBroadcast(false);
+			try {
+				controls.show();
+				controls.getWindow().resetMouseOver();
+				controls.getPointer().set(-1, -1).released();
+				controls.getPointer().set(mouseX, mouseY);
+				if (resized) controls.setGraphics(sketchRef, 0, 0);
+			} finally {
+				controls.setVisible(wasVisible);
+				controls.setBroadcast(true);
 			}
-			// Keep hover coordinates current independently of CP5's event cache.
-			controls.getPointer().set(mouseX, mouseY);
 		}
 	}
 
@@ -596,7 +582,6 @@ class App {
 	// Global UI Events
 
 	void mousePressed() {
-		pointerGestureActive = true;
 		lastIdPressed = -1;
 		if (view == "GRID") checkArtsFocus();
 		if (mouseOver(separator*width,0, separatorWidth, height)) separatorIsMoving = true;
@@ -607,7 +592,7 @@ class App {
 	}
 
 	void mouseIsPressed() {
-		if (!pointerGestureActive || !mousePressed) {
+		if (!focused || !mousePressed) {
 			separatorIsMoving = false;
 			return;
 		}
@@ -625,7 +610,6 @@ class App {
 	}
 
 	void mouseReleased() {
-		pointerGestureActive = false;
 		if (view == "GRID") checkArtsFocus();
 		if (isFocused && lastIdPressed == focusedId && view != "SINGLE") {
 			view = "SINGLE";

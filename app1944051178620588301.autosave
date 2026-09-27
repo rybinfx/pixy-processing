@@ -10,26 +10,16 @@ class App {
 	Pop pop;
 	int aa = 1;
 	int expSize = 1000;
-	float initialScale = 4;
 
 	int lastSel = -1;
 	
 	int popRow;
 	int popSize;
-	int requestedPopRow = -1;
 	int genSize;
 
 	boolean goSingle = false;
-	int inputWidth = -1;
-	int inputHeight = -1;
-	boolean inputFocused = true;
-	PGraphics inputGraphics;
-	int inputGraphicsWidth = -1;
-	int inputGraphicsHeight = -1;
-	boolean pointerGestureActive = false;
 
 	NodeDisplay nd = new NodeDisplay();
-	GeneControls geneControls;
 
 	float mutationRate = 100;
 
@@ -82,16 +72,10 @@ class App {
 	color mainColorOver = color(187,77,255);
 	color mainColorDown = color(93,0,158);
 
-	color grayNormal = color(120);
-	color grayNormalOver = color(150);
-	color grayNormalDown = color(100);
-	color grayDark = color(33);
-
-	// Slider fill color, independent of button colors (grayscale or RGB).
-	color sliderColor = color(66);
-
-	// Border color for all UI group boxes (grayscale or RGB).
-	color uiGroupBorderColor = color(33);
+	color grayNormal = color(212);
+	color grayNormalOver = color(240);
+	color grayNormalDown = color(117);
+	color grayDark = color(66);
 
 	// BUTTONS UI
 
@@ -115,8 +99,6 @@ class App {
 	PVector[] genMutRect;
 	Textlabel tExpSize;
 	Slider sExpSize;
-	Textlabel tInitialScale;
-	Slider sInitialScale;
 
 	PVector[] mainRect;
 	Button bMainEvolve;
@@ -128,36 +110,17 @@ class App {
 
 	PFont font = createFont("font.ttf", uiblock+2);
 	PFont fontbig = createFont("font.ttf", (uiblock*2+2));
-	// ControlP5 must use logical text sizes, not the Retina glyph texture size.
-	ControlFont controlFont = new ControlFont(font, uiblock+2);
-	ControlFont controlFontBig = new ControlFont(fontbig, uiblock*2+2);
 
 	App() {
 		pop = new Pop(this);
 		setPopSize(5);
 		controls();
-		geneControls = new GeneControls(this);
 	}
 
 	void run() {
-		if (requestedPopRow != -1) {
-			int nextRow = requestedPopRow;
-			requestedPopRow = -1;
-			setPopSize(nextRow);
-			lastIdPressed = -1;
-			isFocused = false;
-			focusedId = min(focusedId, popSize-1);
-			if (lastSel >= popSize) {
-				lastSel = -1;
-				isRender = false;
-			}
-		}
-		refreshWindowInput();
-		updateLayout();
 		keyIsPressed();
 		mouseIsPressed();
-		if (view == "GRID") checkArtsFocus();
-		displayUI();
+		updateLayout();
 		displayPop();
 		runTime();
 		if (isRender) render();
@@ -186,7 +149,7 @@ class App {
 
 	void beginRender() {
 		
-		renderer = createExportGraphics(expSize);
+		renderer = createGraphics(expSize,expSize,P2D);
 
 		appTime = 0;
 		renderFrameCount = 0;
@@ -199,23 +162,13 @@ class App {
 
 
 	void setPopSize(int n) {
-		pop.setPopSize(n);
 		popRow = n;
 		popSize = n*n;
+		pop.setPopSize(n);
 	}
 
 	void randomPop() {
 		pop.randomPop();
-	}
-
-	void updateShaderScale(float value) {
-		float nextScale = constrain(value, 0, 10);
-		// ControlP5 can rebroadcast a value during layout; only apply changes.
-		if (nextScale == initialScale) return;
-		initialScale = nextScale;
-		for (Artwork artwork : pop.arts) {
-			artwork.dna.scale = initialScale;
-		}
 	}
 
 	// DISPLAY POP
@@ -259,48 +212,6 @@ class App {
 
 	// UPDATE LAYOUT
 
-	void refreshWindowInput() {
-		boolean resized = inputWidth != width || inputHeight != height;
-		boolean graphicsChanged = inputGraphics != g || inputGraphicsWidth != g.width || inputGraphicsHeight != g.height;
-		boolean lostFocus = inputFocused && !focused;
-		inputFocused = focused;
-
-		inputWidth = width;
-		inputHeight = height;
-		inputGraphics = g;
-		inputGraphicsWidth = g.width;
-		inputGraphicsHeight = g.height;
-		if (resized || graphicsChanged || lostFocus) {
-			separatorIsMoving = false;
-			lastIdPressed = -1;
-			isFocused = false;
-			pointerGestureActive = false;
-		}
-
-		ControlP5[] windows = {cp5time, cp5gen, cp5main, cp5back, selectButtons};
-		for (ControlP5 controls : windows) {
-			// The OpenGL surface and sketch dimensions can update on different
-			// frames. Refresh ControlP5's hit bounds when either changes.
-			if (resized || graphicsChanged) controls.setGraphics(sketchRef, 0, 0);
-			if (resized || graphicsChanged || lostFocus) {
-				// Cancel stale input only when the window changes. Releasing on
-				// idle frames interferes with ControlP5's normal button clicks.
-				boolean wasVisible = controls.isVisible();
-				controls.setBroadcast(false);
-				try {
-					controls.show();
-					controls.getPointer().set(-1, -1).released();
-					controls.getWindow().resetMouseOver();
-				} finally {
-					controls.setVisible(wasVisible);
-					controls.setBroadcast(true);
-				}
-			}
-			// Keep hover coordinates current independently of CP5's event cache.
-			controls.getPointer().set(mouseX, mouseY);
-		}
-	}
-
 	void updateLayout() {
 
 		if (goSingle) {
@@ -312,12 +223,20 @@ class App {
     separatorLimitMax = 1-(float) 360/width;;
 
 
+		cp5time.setGraphics(sketchRef,0,0);
+		cp5gen.setGraphics(sketchRef,0,0);
+		cp5main.setGraphics(sketchRef,0,0);
+		cp5back.setGraphics(sketchRef,0,0);
+
+		selectButtons.setGraphics(sketchRef,0,0);
+
+
 		displaySize = new PVector(separator*width, height);
 		uiPos = new PVector(separator*width + separatorWidth + generalMargin, generalMargin);
 		uiSize = new PVector(width-uiPos.x-generalMargin, height-generalMargin*2);
 		countGrid();
-		syncSelectionButtons();
 		updateControls();
+		displayUI();
 	}
 
 	void countGrid() {
@@ -342,8 +261,6 @@ class App {
 	}
 
 	void displayUI() {
-    geneControls.layout(view == "GRID" && !isFocused && lastSel == -1,
-      uiPos.x, uiPos.y, uiSize.x, max(1, uiSize.y-uiblock*21));
 		displaySeparator();
 		displayGeneral();
 
@@ -363,7 +280,7 @@ class App {
       popStyle();
 
 			pushStyle();
-			stroke(uiGroupBorderColor);
+			stroke(grayNormal);
 			noFill();
 			rect(uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*23);
 			popStyle();
@@ -373,19 +290,23 @@ class App {
 		} else if (isFocused) {
 			pop.display(focusedId, uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*23);
 			pushStyle();
-			stroke(uiGroupBorderColor);
+			stroke(grayNormal);
 			noFill();
 			rect(uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*23);
 			popStyle();
 		} else if (lastSel != -1) {
 			pop.display(lastSel, uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*23);
 			pushStyle();
-			stroke(uiGroupBorderColor);
+			stroke(grayNormal);
 			noFill();
 			rect(uiPos.x, uiPos.y, uiSize.x, uiPos.y+uiSize.y-uiblock*23);
 			popStyle();
 		} else {
-			geneControls.display();
+			pushStyle();
+			fill(240);
+			textFont(font);
+			text(textGreet,uiPos.x, uiPos.y, uiSize.x-uiblock*4, uiSize.x);
+			popStyle();
 		}
 	}
 
@@ -408,7 +329,7 @@ class App {
 	void displayTime() {
 		pushStyle();
 		noFill();
-		stroke(uiGroupBorderColor);
+		stroke(grayNormal);
 		rect(timeRect[0].x,timeRect[0].y,timeRect[1].x,timeRect[1].y);
 		popStyle();
 
@@ -419,7 +340,7 @@ class App {
 	void displayMainBlock() {
 		pushStyle();
 		noFill();
-		stroke(uiGroupBorderColor);
+		stroke(grayNormal);
 		rect(mainRect[0].x,mainRect[0].y,mainRect[1].x,mainRect[1].y);
 		popStyle();
 	}
@@ -427,26 +348,29 @@ class App {
 	void displayGeneBlock() {
 		pushStyle();
 		noFill();
-		stroke(uiGroupBorderColor);
+		stroke(grayNormal);
 		rect(genRect[0].x,genRect[0].y,genRect[1].x,genRect[1].y);
 		popStyle();
 
 		tPopSize.setText("NUM: "+popSize);
 		tGenNum.setText("AA: "+aa);
 		tExpSize.setText("RES: "+expSize+"px");
-		tInitialScale.setText("SCALE: "+nf(initialScale, 1, 1));
-	}
-
-	void syncSelectionButtons() {
-		while (selButs.size() < popSize) {
-			selButs.add(addBut(selButs.size()));
-		}
-		while (selButs.size() > popSize) {
-			selButs.remove(selButs.size()-1).remove();
-		}
 	}
 
 	void displayButtons() {
+
+		if (selButs.size() < popSize) {
+			for (int i = selButs.size(); i < popSize; i++) {
+				selButs.add(addBut(i));
+			}
+		} else if (selButs.size() > popSize) {
+			for (int i = 0; i < selButs.size() - popSize; i++) {
+				selButs.remove(selButs.size()-1);
+			}
+		}
+
+
+
 		for (int i = 0; i < popSize; i++) {
 			if (isFocused && focusedId == i && view == "GRID") {
 				selButs.get(i).show();
@@ -532,8 +456,8 @@ class App {
 
 
 	void increasePop() {
-		// Keep the current grid intact until the next draw begins.
-		requestedPopRow = (requestedPopRow == -1 ? popRow : requestedPopRow)+1;
+		popRow++;
+		setPopSize(popRow);
 
 		bGenMinus
 		.setColorBackground(grayNormal)
@@ -543,8 +467,11 @@ class App {
 	}
 
 	void decreasePop() {
-		requestedPopRow = max(1, (requestedPopRow == -1 ? popRow : requestedPopRow)-1);
-		if (requestedPopRow <= 1){
+		if (popRow > 1) {
+			popRow--;
+			setPopSize(popRow);		
+		} 
+		if (popRow <= 1){
 			bGenMinus
 			.setColorBackground(grayDark)
 			.setColorActive(grayDark)
@@ -576,9 +503,7 @@ class App {
 
 	void checkArtsFocus() {
 		isFocused = false;
-		if (!focused || gridPos == null) return;
-		int count = min(pop.arts.size(), min(gridPos.length, selButs.size()));
-		for (int i = 0; i < count; i++) {
+		for (int i = 0; i < popSize; i++) {
 			if (mouseOver(gridPos[i].x-gridMargin/2-1, gridPos[i].y-gridMargin/2-1, gridScale.x+gridMargin+2, gridScale.y+gridMargin+2)) {
 				isFocused = true;
 				focusedId = i;
@@ -596,9 +521,6 @@ class App {
 	// Global UI Events
 
 	void mousePressed() {
-		pointerGestureActive = true;
-		lastIdPressed = -1;
-		if (view == "GRID") checkArtsFocus();
 		if (mouseOver(separator*width,0, separatorWidth, height)) separatorIsMoving = true;
 		if (isFocused && !selButs.get(focusedId).isMouseOver()) {
 			lastIdPressed = focusedId;
@@ -607,10 +529,6 @@ class App {
 	}
 
 	void mouseIsPressed() {
-		if (!pointerGestureActive || !mousePressed) {
-			separatorIsMoving = false;
-			return;
-		}
 		if (mousePressed) {
 			if (view == "SINGLE" && mouseOver (0,0,displaySize.x,displaySize.y)) {
 				pop.arts.get(focusedId).mouseMove();
@@ -625,9 +543,7 @@ class App {
 	}
 
 	void mouseReleased() {
-		pointerGestureActive = false;
-		if (view == "GRID") checkArtsFocus();
-		if (isFocused && lastIdPressed == focusedId && view != "SINGLE") {
+		if (lastIdPressed == focusedId && view != "SINGLE") {
 			view = "SINGLE";
 		}
 		lastIdPressed = -1;
@@ -770,18 +686,12 @@ class App {
 		bGenRen.setPosition((int) uiPos.x + uiblock*17 + abs(uiSize.x-(uiblock*18))/2+uiblock/2, (int) uiPos.y+uiSize.y-uiblock*13+uiblock*3)
 			.setSize((int) abs(uiSize.x-( uiblock*18))/2-uiblock/2,uiblock*2);
 
-		float settingsX = uiPos.x + uiblock*17;
-		float settingsY = uiPos.y + uiSize.y-uiblock*13;
-		int settingsWidth = max(1, int((uiSize.x-uiblock*18)/2));
-		sExpSize.setPosition(settingsX, settingsY+18)
-			.setSize(max(1, settingsWidth-uiblock), uiblock);
-		sInitialScale.setPosition(settingsX+settingsWidth, settingsY+18)
-			.setSize(max(1, settingsWidth-uiblock), uiblock);
+		sExpSize.setPosition((int) uiPos.x + uiblock*27, (int) uiPos.y+uiSize.y-uiblock*13+uiblock*1)
+			.setSize((int) uiSize.x - uiblock*28, (int) uiblock*1);
 
 		tPopSize.setPosition((int) uiPos.x + uiblock -3, (int) uiPos.y+uiSize.y-uiblock*13+uiblock-4);
 		tGenNum.setPosition((int) uiPos.x + uiblock*9 -3, (int) uiPos.y+uiSize.y-uiblock*13+uiblock-4);
-		tExpSize.setPosition(settingsX-3, settingsY+2);
-		tInitialScale.setPosition(settingsX+settingsWidth-3, settingsY+2);
+		tExpSize.setPosition((int) uiPos.x + uiblock*17 -3, (int) uiPos.y+uiSize.y-uiblock*13+uiblock-4);
 	}
 
 	void updateMainBlock() {
@@ -812,7 +722,7 @@ class App {
 				.setColorForeground(grayNormalOver)
 				.getCaptionLabel()
 				.setColor(color(255))
-				.setFont(controlFontBig);	
+				.setFont(fontbig);	
 		} else {
 			bMainAgain
 				.setColorBackground(grayDark)
@@ -859,7 +769,7 @@ class App {
 		.setColorForeground(grayNormalOver)
 			.getCaptionLabel()
 			.setColor(grayDark)
-			.setFont(controlFont);
+			.setFont(font);
 
 		bTimePause = cp5time.addButton("actionTimePause");
 		bTimePause.plugTo(this)
@@ -869,7 +779,7 @@ class App {
 		.setLabel("||")
 			.getCaptionLabel()
 			.setColor(grayDark)
-			.setFont(controlFont);
+			.setFont(font);
 		bTimePause.setLabelVisible(true);
 
 		bTimeStop = cp5time.addButton("actionTimeStop");
@@ -880,29 +790,27 @@ class App {
 		.setLabel("x")
 			.getCaptionLabel()
 			.setColor(grayDark)
-			.setFont(controlFont);
+			.setFont(font);
 		bTimeStop.setLabelVisible(true);
 
 		sTimeFreq = cp5time.addSlider("timeFreq")
-		.setScrollSensitivity(0)
 		.plugTo(this)
 		.setRange(0.5,60)
 		.setValue(5)
 		.setLabelVisible(false)
-		.setColorActive(sliderColor)
+		.setColorActive(grayNormalOver)
 		.setColorBackground(grayDark)
-		.setColorForeground(sliderColor);
+		.setColorForeground(grayNormal);
 		sTimePos = cp5time.addSlider("appTime")
-		.setScrollSensitivity(0)
 		.plugTo(this)
 		.setLabelVisible(false)
 		.setRange(0,1)
 		.setValue(0)
-		.setColorActive(sliderColor)
+		.setColorActive(grayNormal)
 		.setColorBackground(grayDark)
-		.setColorForeground(sliderColor);
+		.setColorForeground(grayNormalDown);
 
-		tTime = cp5time.addTextlabel("timelabel").setFont(controlFont).setColor(grayNormal);
+		tTime = cp5time.addTextlabel("timelabel").setFont(font).setColor(grayNormal);
 
 
 
@@ -921,7 +829,7 @@ class App {
 		.setColorForeground(grayNormalOver)
 			.getCaptionLabel()
 			.setColor(grayDark)
-			.setFont(controlFont);
+			.setFont(font);
 		bGenMinus = cp5time.addButton("actionGenMinus");
 		bGenMinus.setLabelVisible(true)
 		.setLabel("-")
@@ -931,7 +839,7 @@ class App {
 		.setColorForeground(grayNormalOver)
 			.getCaptionLabel()
 			.setColor(grayDark)
-			.setFont(controlFont);
+			.setFont(font);
 		bGenBack = cp5time.addButton("actionAAm");
 		bGenBack.setLabelVisible(true)
 		.setLabel("-")
@@ -941,7 +849,7 @@ class App {
 		.setColorForeground(grayNormalOver)
 			.getCaptionLabel()
 			.setColor(grayDark)
-			.setFont(controlFont);		
+			.setFont(font);		
 		bGenFov = cp5time.addButton("actionAAp");
 		bGenFov.setLabelVisible(true)
 		.setLabel("+")
@@ -951,7 +859,7 @@ class App {
 		.setColorForeground(grayNormalOver)
 			.getCaptionLabel()
 			.setColor(grayDark)
-			.setFont(controlFont);
+			.setFont(font);
 		bGenExp = cp5time.addButton("actionExp");
 		bGenExp.setLabelVisible(true)
 		.setLabel("SAVE IMAGE")
@@ -961,7 +869,7 @@ class App {
 		.setColorForeground(grayNormalOver)
 			.getCaptionLabel()
 			.setColor(grayDark)
-			.setFont(controlFont);		
+			.setFont(font);		
 		bGenRen = cp5time.addButton("actionRen");
 		bGenRen.setLabelVisible(true)
 		.setLabel("SAVE VIDEO")
@@ -971,31 +879,20 @@ class App {
 		.setColorForeground(grayNormalOver)
 			.getCaptionLabel()
 			.setColor(grayDark)
-			.setFont(controlFont);
+			.setFont(font);
 
 		sExpSize = cp5time.addSlider("expSize")
-		.setScrollSensitivity(0)
 		.plugTo(this)
 		.setRange(500,4000)
 		.setValue(expSize)
 		.setLabelVisible(false)
-		.setColorActive(sliderColor)
+		.setColorActive(grayNormalOver)
 		.setColorBackground(grayDark)
-		.setColorForeground(sliderColor);
+		.setColorForeground(grayNormal);
 
-		sInitialScale = cp5time.addSlider("initialScale")
-		.setScrollSensitivity(0)
-		.setRange(0,10)
-		.setValue(initialScale)
-		.setLabelVisible(false)
-		.setColorActive(sliderColor)
-		.setColorBackground(grayDark)
-		.setColorForeground(sliderColor);
-
-		tGenNum = cp5time.addTextlabel("genenum").setFont(controlFont).setColor(grayNormal);
-		tPopSize = cp5time.addTextlabel("genepopsize").setFont(controlFont).setColor(grayNormal);
-		tExpSize = cp5time.addTextlabel("genemutrate").setFont(controlFont).setColor(grayNormal);
-		tInitialScale = cp5time.addTextlabel("initialscalelabel").setFont(controlFont).setColor(grayNormal);
+		tGenNum = cp5time.addTextlabel("genenum").setFont(font).setColor(grayNormal);
+		tPopSize = cp5time.addTextlabel("genepopsize").setFont(font).setColor(grayNormal);
+		tExpSize = cp5time.addTextlabel("genemutrate").setFont(font).setColor(grayNormal);
 
 
 
@@ -1010,7 +907,7 @@ class App {
 		.setColorForeground(grayDark)
 			.getCaptionLabel()
 			.setColor(grayNormalDown)
-			.setFont(controlFontBig);
+			.setFont(fontbig);
 		bMainAgain = cp5time.addButton("actionMainAgain");
 		bMainAgain.setLabelVisible(true)
 		.setLabel("repeat")
@@ -1020,7 +917,7 @@ class App {
 		.setColorForeground(grayDark)
 			.getCaptionLabel()
 			.setColor(grayNormalDown)
-			.setFont(controlFontBig);
+			.setFont(fontbig);
 		bMainNew = cp5time.addButton("actionMainNew");
 		bMainNew.setLabelVisible(true)
 		.setLabel("new")
@@ -1030,7 +927,7 @@ class App {
 		.setColorForeground(grayNormalOver)
 			.getCaptionLabel()
 			.setColor(color(255))
-			.setFont(controlFontBig);		
+			.setFont(fontbig);		
 
 
 
@@ -1043,7 +940,7 @@ class App {
 		.setColorForeground(grayNormalOver)
 			.getCaptionLabel()
 			.setColor(color(255))
-			.setFont(controlFontBig);		
+			.setFont(fontbig);		
 
 	}
 
@@ -1144,16 +1041,6 @@ class App {
 
 void controlEvent(ControlEvent theEvent) {
   if (theEvent.isController()) {
-    if (theEvent.controller().getName().equals("initialScale")) {
-      if (app != null) app.updateShaderScale(theEvent.controller().getValue());
-      return;
-    }
-    if (theEvent.controller().getName().startsWith("geneProbability")) {
-      if (app != null && app.geneControls != null) {
-        app.geneControls.change(theEvent.controller().getId(), theEvent.controller().getValue());
-      }
-      return;
-    }
     if (theEvent.controller().getName().startsWith("baton")) {
       int id = theEvent.controller().getId();
 

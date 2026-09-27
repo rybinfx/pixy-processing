@@ -11,6 +11,7 @@ uniform vec2 u_off;
 uniform float u_scale;
 uniform float u_hoff;
 uniform float u_args[512];
+uniform float u_time;
 
 
 vec3 precol[64];
@@ -38,6 +39,16 @@ vec3 g_y() {
 
 vec3 g_arg(int n) {
 	return vec3(u_args[n*3], u_args[n*3+1], u_args[n*3+2]);
+}
+
+// TIME
+
+vec3 g_time() {
+	return vec3(u_time);
+}
+
+vec3 g_sintime(float phaseOffset) {
+	return vec3(sin(u_time * 2.0 * M_PI + phaseOffset));
 }
 
 // BASIC MATH

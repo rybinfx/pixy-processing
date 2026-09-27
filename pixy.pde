@@ -16,7 +16,10 @@ String textGreet = "Hello, my name is Pixy. And I am here to generate images wit
  
 void settings() {
 	size(1280,720,P2D);
-  pixelDensity(1);
+  // Processing's non-AWT path reports displayDensity() as 1 on Retina.
+  // pixelDensity(2) uses the same check and falls back to 1, so configure
+  // the backing density directly before Processing creates the P2D surface.
+  pixelDensity = 2;
 	PJOGL.setIcon("data/logo.png");
 }
 
@@ -36,7 +39,7 @@ void setup() {
 	vertexShader = loadStrings("data/vertex.glsl");
 	fragmentShader = loadStrings("data/fragment.glsl");
 
-	renderer = createGraphics(800,800,P2D);
+	renderer = createExportGraphics(800);
 
 	app = new App();
 
@@ -67,4 +70,19 @@ void keyReleased() {
 
 void mouseMoved() {
 	app.mouseMoved();
+}
+
+void mouseWheel(processing.event.MouseEvent event) {
+  app.geneControls.wheel(event.getCount());
+}
+
+PGraphics createExportGraphics(int size) {
+  PGraphics target = createGraphics(size, size, P2D);
+  // Offscreen graphics inherit the display density. Exports must instead
+  // keep the exact pixel dimensions selected in the resolution control.
+  if (target.pixelDensity != 1) {
+    target.pixelDensity = 1;
+    target.setSize(size, size);
+  }
+  return target;
 }

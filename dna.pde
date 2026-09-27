@@ -185,6 +185,7 @@ class DNA {
 	void mInsert(Gene g) {
 		int index = geneIndex(g);
 		Gene newGene = getGene(false);
+		if (newGene.nodes == 0) return; // A value/time leaf cannot wrap an existing branch.
 		newGene.setAdress(g.adress);
 		genes.add(index,newGene);
 		int toAdd = newGene.nodes - 1;
@@ -257,41 +258,44 @@ class DNA {
 
 	// PICK GENES
 
-	String getVal() {
-		for (int i = 0; i < 100; i++) {
-			int rtest = int(random(genesValues.length));
-			if (random(1) < genesValuesRate[rtest]) return genesValues[rtest];
+	// Draw directly from relative weights. Zero-weight entries are never picked.
+	int pickWeighted(float[] weights) {
+		float total = weightTotal(weights);
+		if (total <= 0) return -1;
+		float pick = random(total);
+		int last = -1;
+		for (int i = 0; i < weights.length; i++) {
+			if (weights[i] <= 0) continue;
+			last = i;
+			pick -= weights[i];
+			if (pick < 0) return i;
 		}
+		return last;
+	}
 
-		println("Hard to find value");
-		return "rndm";
+	String getVal() {
+		int index = pickWeighted(genesValuesRate);
+		return index < 0 ? "x" : genesValues[index];
 	}
 
 	String getMethod() {
+		// Groups organize the UI only; every operation shares one weighted pool.
+		float total = 0;
+		for (float[] weights : genesMethodsRate) total += weightTotal(weights);
+		if (total <= 0) return getVal();
 
-		String[] methodGroup = new String[0];
-		float[] methodGroupRate = new float[0];
-
-		for (int i = 0; i < 100; i++) {
-			int rtest = int(random(genesMethods.length));
-			if (random(1) < genesMethodsGroupRate[rtest]) {
-				methodGroup = genesMethods[rtest];
-				methodGroupRate = genesMethodsRate[rtest];
-				break;
-			}
-			if (i == 99) {
-				println("Hard to find method");
-				return "rndm";
+		float pick = random(total);
+		String last = null;
+		for (int group = 0; group < genesMethods.length; group++) {
+			for (int item = 0; item < genesMethods[group].length; item++) {
+				float weight = genesMethodsRate[group][item];
+				if (weight <= 0) continue;
+				last = genesMethods[group][item];
+				pick -= weight;
+				if (pick < 0) return last;
 			}
 		}
-
-		for (int i = 0; i < 100; i++) {
-			int rtest = int(random(methodGroup.length));
-			if (random(1) < methodGroupRate[rtest]) return methodGroup[rtest];
-		}
-
-		println("Hard to find method");
-		return "rndm";
+		return last;
 	}
 
 	Gene getGene(boolean isVal) {
@@ -346,8 +350,7 @@ class DNA {
 	}
 
 	boolean isValue(Gene g) {
-		if (g.type == "x" || g.type == "y" || g.type == "rndm" || g.type == "rndm3") return true;
-		return false;
+		return g.nodes == 0;
 	}
 
 
