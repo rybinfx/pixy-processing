@@ -61,8 +61,9 @@ class Pop {
 		if (pool.size() > 1) {
 			lastParentIndex = -1;
 			for (Artwork a : arts) {
-				DNA newDNA = pool.get((int)random(pool.size()));
-				newDNA = newDNA.sex(newDNA, pool.get((int)random(pool.size())));
+				// Crossover is disabled while the typed graph system is introduced.
+				DNA newDNA = pool.get((int)random(pool.size())).copy();
+				newDNA.mutate();
 				a.assignDNA(newDNA);
 			}
 		}

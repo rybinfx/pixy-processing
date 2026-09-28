@@ -6,8 +6,6 @@ class NodeDisplay {
 	float nysize = 25;
 	float margin = 20;
 	color nodeTextColor = color(200);
-	color nodeBorderColor = color(66);
-	color nodeLineColor = color(66);
 
 	NodeDisplay() {
 		canvas.smooth(2);
@@ -65,7 +63,6 @@ class NodeDisplay {
 		canvas.pushMatrix();
 		canvas.translate(canvas.width/2.0, canvas.height/2.0);
 		canvas.scale(fitScale);
-		canvas.stroke(nodeLineColor);
 		canvas.strokeWeight(1);
 		for (ArrayList<PreviewNode> layer : layers) {
 			for (PreviewNode node : layer) {
@@ -74,15 +71,21 @@ class NodeDisplay {
 				parentAddress.remove(parentAddress.size()-1);
 				PreviewNode parent = nodesByAddress.get(parentAddress);
 				if (parent != null) {
+					// Each connection carries the child node's output type.
+					canvas.stroke(geneTypeColor(node.gene.outputType()));
 					canvas.line(parent.x, parent.y-nysize/2, node.x, node.y+nysize/2);
 				}
 			}
 		}
 		for (ArrayList<PreviewNode> layer : layers) {
 			for (PreviewNode node : layer) {
-				canvas.noFill();
-				canvas.stroke(nodeBorderColor);
+				color typeColor = geneTypeColor(node.gene.outputType());
+				canvas.fill(typeColor, 22);
+				canvas.stroke(typeColor);
 				canvas.rect(node.x, node.y, node.w, nysize);
+				if (node.gene.depth == 1) {
+					canvas.line(node.x, node.y+nysize/2, node.x, node.y+nysize/2+10);
+				}
 				canvas.fill(nodeTextColor);
 				canvas.text(node.label, node.x, node.y);
 			}

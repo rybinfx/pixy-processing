@@ -74,11 +74,19 @@ class Artwork {
 		// Use the actual framebuffer dimensions, not just density metadata.
 		float pixelScale = (float) target.pixelWidth / target.width;
 		shader.set("u_g_scale", coordinateScale / pixelScale);
+		float pixelScaleY = (float) target.pixelHeight / target.height;
+		// UVs cover the current image, independently of DNA pan and scale.
+		shader.set("u_uv_rect", drawX*pixelScale,
+			(target.height-drawY-drawHeight)*pixelScaleY,
+			drawWidth*pixelScale, drawHeight*pixelScaleY);
+		// Share window-normalized mouse coordinates across every image and export.
+		shader.set("u_mouse", constrain((float) mouseX/max(1, width), 0, 1),
+			1-constrain((float) mouseY/max(1, height), 0, 1));
 		shader.set("u_off", dna.offset.x, dna.offset.y);
 		shader.set("u_scale", dna.scale);
 		shader.set("u_hoff", dna.hueOffset);
 		if (!dna.args.isEmpty()) shader.set("u_args", argsToFloat(dna.args));
-		if (dna.code.contains("g_time(") || dna.code.contains("g_sintime(")) {
+		if (dna.code.contains("g_time(") || dna.code.contains("g_sintime(") || dna.code.contains("g_ctime(")) {
 			shader.set("u_time", app.appTime);
 		}
 

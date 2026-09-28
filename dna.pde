@@ -7,7 +7,7 @@ class DNA {
 
 	String code;
 
-	int depthLimit = 1;
+	int depthLimit = 3;
 	int widthLimit = 1;
 
 	DNA() {
@@ -23,12 +23,29 @@ class DNA {
 
 	void construct() {
 		enforceGraphLimits();
+		validateTypes();
 		code = "vec3 col = " + genes.get(0).get() + ";";
 	}
 
+	void validateTypes() {
+		if (genes.get(0).outputType() != GeneValueType.IMG) {
+			throw new IllegalStateException("Graph output must be img");
+		}
+		for (Gene gene : genes) {
+			ArrayList<Gene> children = gene.getChildren();
+			for (int i = 0; i < children.size(); i++) {
+				if (children.get(i).outputType() != gene.inputType(i)) {
+					throw new IllegalStateException("Wrong input type for " + gene.type + " at " + i);
+				}
+			}
+		}
+	}
+
 	void updateGraphLimits() {
-		depthLimit = max(1, depth_max);
-		widthLimit = max(1, width_max);
+		// Keep enough depth available for sdfimg(circle(pxy()), colrnd(), rrnd()).
+		depthLimit = max(3, depth_max);
+		// Even the smallest image needs SDF, color and ramp on its next level.
+		widthLimit = max(3, width_max);
 	}
 
 	void randomDNA() {
@@ -61,14 +78,14 @@ class DNA {
 		ArrayList<Gene> b2 = p2.grabBranch(p1, g2);
 
 		for (Gene g : b2) {
-			if (g.type == "rndm" || g.type == "rndm3") {
+			if (g.usesArguments()) {
 				p1.args.add(p2.args.get(g.argsBinder).get());
 				g.argsBinder = p1.args.size()-1;
 			}
 		}
 
 		for (Gene g : b1) {
-			if (g.type == "rndm" || g.type == "rndm3") {
+			if (g.usesArguments()) {
 				p2.args.add(p1.args.get(g.argsBinder).get());
 				g.argsBinder = p2.args.size()-1;
 			}
@@ -121,7 +138,7 @@ class DNA {
 	void sortArgs() {
 		ArrayList<PVector> sorted = new ArrayList<PVector>();
 		for (Gene g : genes) {
-			if (g.type == "rndm" || g.type == "rndm3") {
+			if (g.usesArguments()) {
 				if (sorted.size() < geneArgumentLimit) {
 					sorted.add( args.get(g.argsBinder) );
 					g.argsBinder = sorted.size()-1;
@@ -134,6 +151,7 @@ class DNA {
 	}
 
 	void mCopy(Gene g1, Gene g2) {
+		if (g1.outputType() != g2.outputType()) return;
 		ArrayList<Gene> b1 = grabBranch(g1);
 
 		int ind = geneIndex(g2);
@@ -146,6 +164,7 @@ class DNA {
 	}
 
 	void mSwap(Gene g1, Gene g2) {
+		if (g1.outputType() != g2.outputType()) return;
 		// Swapping a branch with itself or one of its descendants removes the
 		// second target during the first replacement. Only swap disjoint branches.
 		if (containsBranch(g1, g2) || containsBranch(g2, g1)) return;
@@ -175,27 +194,48 @@ class DNA {
 		boolean newIsValue;
 		if (isValue(g)) newIsValue = random(1) > 0.2;
 		else newIsValue = random(1) < 0.2;
-		replaceGene(g, getGene(newIsValue));
+		replaceGene(g, getGene(newIsValue, g.outputType(), depthLimit-g.depth+1));
 	}
 
 	void mRemoveNode(Gene g) {
-		if (!isValue(g)) {
-			int index = geneIndex(g);
-			clearNode(g, g.nodes-1);
-			genes.remove(index);
-			genes.get(index).setAdress(g.adress);
-			updAd(genes.get(index));
+		ArrayList<Gene> compatible = new ArrayList<Gene>();
+		for (Gene child : g.getChildren()) {
+			if (child.outputType() == g.outputType()) compatible.add(child);
 		}
+		if (compatible.isEmpty()) return;
+		Gene child = compatible.get((int) random(compatible.size()));
+		ArrayList<Gene> replacement = grabBranch(child);
+		int index = geneIndex(g);
+		deleteBranch(g);
+		injectBranch(index, replacement);
+		genes.get(index).setAdress(new ArrayList<Integer>(g.adress));
+		updAd(genes.get(index));
 	}
 
 	void mInsert(Gene g) {
 		int index = geneIndex(g);
-		Gene newGene = getGene(false);
+		Gene newGene = getGene(false, g.outputType(), depthLimit-g.depth+1);
 		if (newGene.nodes == 0) return; // A value/time leaf cannot wrap an existing branch.
-		newGene.setAdress(g.adress);
-		genes.add(index,newGene);
-		int toAdd = newGene.nodes - 1;
-		updNode(newGene, toAdd);
+		// Preserve the branch in a matching slot (pxscale takes pxy first).
+		int input = -1;
+		for (int i = 0; i < newGene.nodes; i++) {
+			if (newGene.inputType(i) == g.outputType()) input = i;
+		}
+		if (input < 0) return;
+		newGene.setAdress(new ArrayList<Integer>(g.adress));
+		ArrayList<Gene> replacement = new ArrayList<Gene>();
+		replacement.add(newGene);
+		for (int i = 0; i < newGene.nodes; i++) {
+			if (i == input) replacement.addAll(grabBranch(g));
+			else {
+				ArrayList<Integer> address = new ArrayList<Integer>(g.adress);
+				address.add(i);
+				appendTerminalBranch(newGene.inputType(i), address, replacement, null);
+			}
+		}
+		deleteBranch(g);
+		injectBranch(index, replacement);
+		updAd(newGene);
 	}
 
 	void updNode(Gene g, int n) {
@@ -212,7 +252,7 @@ class DNA {
 		int index = geneIndex(g);
 		if (n > 0) {
 			for (int i = 0; i < n; i++) {
-				Gene newGene = getGene(true);
+				Gene newGene = getGene(true, g.inputType(n-1-i));
 				genes.add(index+1,newGene);
 			}
 		}
@@ -280,21 +320,34 @@ class DNA {
 		return last;
 	}
 
-	String getVal() {
-		int index = pickWeighted(genesValues);
-		return index < 0 ? "x" : genesValues[index];
+	Gene getGene(boolean isVal, GeneValueType requiredType) {
+		return getGene(isVal, requiredType, depthLimit);
 	}
 
-	String getCandidate() {
-		int index = pickWeighted(geneFunctionPool);
-		return index < 0 ? getVal() : geneFunctionPool[index];
-	}
-
-	Gene getGene(boolean isVal) {
-		if (isVal) {
-			return new Gene(this, getVal());
+	Gene getGene(boolean isVal, GeneValueType requiredType, int remainingDepth) {
+		if (requiredType == GeneValueType.VEC3) throw new IllegalStateException("vec3 generation is disabled");
+		// SDF ends in a primitive; img ends in sdfimg with complete typed inputs.
+		String[] pool = isVal ? geneTerminalCandidates(requiredType) : genesReturning(geneFunctionPool, requiredType);
+		ArrayList<String> fitting = new ArrayList<String>();
+		for (String name : pool) {
+			if (geneMinimumDepth(name) <= remainingDepth) fitting.add(name);
 		}
-		return new Gene(this, getCandidate());
+		String[] candidates = fitting.toArray(new String[0]);
+		int index = pickWeighted(candidates);
+		if (index >= 0) return new Gene(this, candidates[index]);
+		int minimumDepth = requiredType == GeneValueType.IMG ? 3 : requiredType == GeneValueType.SDF ? 2 : 1;
+		if (remainingDepth < minimumDepth) {
+			throw new IllegalStateException("Insufficient depth for " + requiredType);
+		}
+		if (requiredType == GeneValueType.COL) return new Gene(this, "colrnd");
+		if (requiredType == GeneValueType.IMG) return new Gene(this, "sdfimg");
+		if (requiredType == GeneValueType.SDF) return new Gene(this, "circle");
+		if (!isVal) return getGene(true, requiredType, remainingDepth);
+		if (requiredType == GeneValueType.PXY) return new Gene(this, "pxy");
+		if (requiredType == GeneValueType.PNT) return new Gene(this, "prnd");
+		if (requiredType == GeneValueType.RAMP) return new Gene(this, "rrnd");
+		if (requiredType == GeneValueType.CYCLE) return new Gene(this, "ctime");
+		throw new IllegalStateException("No generator for " + requiredType);
 	}
 
 	boolean chooseValue(int depth, int nextLevelWidth) {
@@ -307,28 +360,65 @@ class DNA {
 		return random(1) >= functionChance;
 	}
 
+  // Reserve complete minimal branches, including the three inputs of sdfimg.
+	void reserveMinimum(GeneValueType type, int depth, int[] widths, int delta) {
+		widths[depth] += delta;
+		if (type == GeneValueType.SDF) reserveMinimum(GeneValueType.PXY, depth+1, widths, delta);
+		if (type == GeneValueType.IMG) {
+			reserveMinimum(GeneValueType.SDF, depth+1, widths, delta);
+			reserveMinimum(GeneValueType.COL, depth+1, widths, delta);
+			reserveMinimum(GeneValueType.RAMP, depth+1, widths, delta);
+		}
+	}
+
+	void reserveInputs(Gene node, int depth, int[] widths) {
+		reserveMinimum(node.outputType(), depth, widths, -1);
+		widths[depth]++;
+		for (int i = 0; i < node.nodes; i++) reserveMinimum(node.inputType(i), depth+1, widths, 1);
+	}
+
+	boolean inputsFit(Gene node, int depth, int[] widths) {
+		if (geneMinimumDepth(node.type) > depthLimit-depth+1) return false;
+		int[] proposed = widths.clone();
+		reserveInputs(node, depth, proposed);
+		for (int i = 1; i <= depthLimit; i++) {
+			if (proposed[i] > widthLimit) return false;
+		}
+		return true;
+	}
+
 	// End branches that would exceed depth or the number of nodes in a level.
 	void enforceGraphLimits() {
 		ArrayList<Gene> capped = new ArrayList<Gene>();
 		int[] levelWidths = new int[depthLimit+2];
-		levelWidths[1] = 1;
+		reserveMinimum(GeneValueType.IMG, 1, levelWidths, 1);
 		appendCapped(genes.get(0), capped, levelWidths);
 		genes = capped;
 		sortArgs();
 	}
 
 	void appendCapped(Gene source, ArrayList<Gene> capped, int[] levelWidths) {
-		if (source.nodes > 0 && (source.depth >= depthLimit || levelWidths[source.depth+1]+source.nodes > widthLimit)) {
-			Gene leaf = getGene(true);
-			leaf.setAdress(new ArrayList<Integer>(source.adress));
-			capped.add(leaf);
+		if (!inputsFit(source, source.depth, levelWidths)) {
+			appendTerminalBranch(source.outputType(), source.adress, capped, levelWidths);
 			return;
 		}
 		capped.add(source);
-		if (source.nodes > 0) levelWidths[source.depth+1] += source.nodes;
+		reserveInputs(source, source.depth, levelWidths);
 		ArrayList<Gene> children = source.getChildren();
 		for (int i = 0; i < children.size(); i++) {
 			appendCapped(children.get(i), capped, levelWidths);
+		}
+	}
+
+	void appendTerminalBranch(GeneValueType requiredType, ArrayList<Integer> address, ArrayList<Gene> target, int[] levelWidths) {
+		Gene node = getGene(true, requiredType, depthLimit-address.size()+1);
+		node.setAdress(new ArrayList<Integer>(address));
+		target.add(node);
+		if (levelWidths != null) reserveInputs(node, node.depth, levelWidths);
+		for (int i = 0; i < node.nodes; i++) {
+			ArrayList<Integer> childAddress = new ArrayList<Integer>(address);
+			childAddress.add(i);
+			appendTerminalBranch(node.inputType(i), childAddress, target, levelWidths);
 		}
 	}
 
@@ -339,13 +429,7 @@ class DNA {
 			if (g.adress.equals(a)) return g;
 		}
 
-		println("Wrong gene adress:");
-		println(a);
-		println("All adresses:");
-		for (Gene g : genes) {
-			println("g.adress: "+g.adress);
-		}
-		return getGene(true);
+		throw new IllegalStateException("Missing gene at " + a);
 	}
 
 	int geneIndex(Gene g) {
@@ -376,22 +460,22 @@ class DNA {
 
 	void addGene() {
 		int[] levelWidths = new int[depthLimit+2];
-		levelWidths[1] = 1;
-		addGene(0, new ArrayList<Integer>(), levelWidths);
+		reserveMinimum(GeneValueType.IMG, 1, levelWidths, 1);
+		addGene(0, new ArrayList<Integer>(), levelWidths, GeneValueType.IMG);
 	}
 
-	void addGene(int n, ArrayList<Integer> a, int[] levelWidths) {
+	void addGene(int n, ArrayList<Integer> a, int[] levelWidths, GeneValueType requiredType) {
 
 		int depth = a.size()+1;
-		Gene lastGene = getGene(chooseValue(depth, levelWidths[depth+1]));
-		if (lastGene.nodes > 0 && levelWidths[depth+1]+lastGene.nodes > widthLimit) lastGene = getGene(true);
-		levelWidths[depth+1] += lastGene.nodes;
+		Gene lastGene = getGene(chooseValue(depth, levelWidths[depth+1]), requiredType, depthLimit-depth+1);
+		if (!inputsFit(lastGene, depth, levelWidths)) lastGene = getGene(true, requiredType, depthLimit-depth+1);
+		reserveInputs(lastGene, depth, levelWidths);
 		genes.add(lastGene);
 		ArrayList<Integer> newAdress = new ArrayList<Integer>(a);
 		newAdress.add(n);
 		lastGene.setAdress(newAdress);
 
-		for (int i = 0; i < lastGene.nodes; i++) addGene(i,lastGene.adress,levelWidths);
+		for (int i = 0; i < lastGene.nodes; i++) addGene(i,lastGene.adress,levelWidths,lastGene.inputType(i));
 	}
 
 	// GENE MANIPULATION
@@ -410,54 +494,38 @@ class DNA {
 			} else {
 				a.add(randomGaussian()*0.1,randomGaussian()*0.1,randomGaussian()*0.1);
 			}
-		}		
+		}
+		// prnd bounds its output in GLSL. Keep shared argument storage unbounded
+		// so rrnd remains unrestricted even when slots are reused at capacity.
 	}
 
 	void changeGene(Gene g) {
-		replaceGene(g, getGene(isValue(g)));
+		replaceGene(g, getGene(isValue(g), g.outputType(), depthLimit-g.depth+1));
 	}
 
 	void replaceGene(Gene g, Gene newGene) {
+		if (g.outputType() != newGene.outputType()) return;
 		int index = geneIndex(g);
 		newGene.setAdress(new ArrayList<Integer>(g.adress));
-		if (newGene.nodes < g.nodes) {
-			for (int i = g.nodes-1; i >= newGene.nodes; i--) {
-				ArrayList<Integer> deladress = new ArrayList<Integer>(g.adress);
-				deladress.add(i);
-				deleteBranch(getGeneByAdress(deladress));
-			}
-		} else if (newGene.nodes > g.nodes) {
-			// New children belong after the existing subtrees in preorder.
-			int insertion = branchIndex(g)[1]+1;
-			for (int i = g.nodes; i < newGene.nodes; i++) {
-				genes.add(insertion++, getGene(true));
+		ArrayList<Gene> children = g.getChildren();
+		ArrayList<Gene> replacement = new ArrayList<Gene>();
+		replacement.add(newGene);
+		for (int i = 0; i < newGene.nodes; i++) {
+			if (i < children.size() && children.get(i).outputType() == newGene.inputType(i)) {
+				replacement.addAll(grabBranch(children.get(i)));
+			} else {
+				ArrayList<Integer> address = new ArrayList<Integer>(g.adress);
+				address.add(i);
+				appendTerminalBranch(newGene.inputType(i), address, replacement, null);
 			}
 		}
-		genes.set(index, newGene);
+		deleteBranch(g);
+		injectBranch(index, replacement);
 		updAd(newGene);
 	}
 
 	void changeValToMeth(Gene g) {
-		if (isValue(g)) {
-			int index = geneIndex(g);
-			genes.set(index, getGene(false));
-			Gene newGene = genes.get(index);
-			newGene.setAdress(new ArrayList<Integer>(g.adress));
-
-			for (int i = newGene.nodes; i >= 1; i--) {
-					if (i == 1) {
-						genes.add(index+1,g.copy(this));
-					} else {
-						genes.add(index+1,getGene(true));
-					}
-					ArrayList<Integer> parentAdress = new ArrayList<Integer>(newGene.adress);
-					parentAdress.add(g.nodes+i-1);
-					genes.get(index+1).setAdress(parentAdress);
-			}
-
-		} else {
-			println("hey!((");
-		}
+		if (isValue(g)) mInsert(g);
 	}
 
 	void deleteBranch(Gene g) {

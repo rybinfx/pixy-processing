@@ -123,6 +123,7 @@ class App {
 	Slider sInitialScale;
 	Slider sDepthMax;
 	Slider sWidthMax;
+	Slider sMutationRate;
 
 	PVector[] mainRect;
 	Button bMainEvolve;
@@ -140,6 +141,7 @@ class App {
 	ControlFont controlFontBig = new ControlFont(fontbig, uiblock*2+2);
 
 	App() {
+		loadProbabilityDefaults(this);
 		pop = new Pop(this);
 		setPopSize(5);
 		controls();
@@ -832,8 +834,8 @@ class App {
 			new PVector((int) uiPos.x, (int) uiPos.y+uiSize.y-uiblock*24),
 			new PVector((int) uiSize.x, (int) uiblock*10)
 		};
-		Slider[] limitSliders = {sDepthMax, sWidthMax};
-		int limitWidth = max(1, int((uiSize.x-40)/3));
+		Slider[] limitSliders = {sDepthMax, sWidthMax, sMutationRate};
+		int limitWidth = max(1, int((uiSize.x-50)/4));
 		for (int i = 0; i < limitSliders.length; i++) {
 			Slider slider = limitSliders[i];
 			slider.setPosition(uiPos.x+10+i*(limitWidth+10), uiPos.y+uiSize.y-230)
@@ -843,7 +845,7 @@ class App {
 			styleSlider(slider);
 		}
 		updateLimitLabels();
-		bShaderView.setPosition(uiPos.x+10+2*(limitWidth+10), uiPos.y+uiSize.y-230)
+		bShaderView.setPosition(uiPos.x+10+3*(limitWidth+10), uiPos.y+uiSize.y-230)
 			.setSize(limitWidth, 22);
 		boolean canView = view == "SINGLE" || (lastSel >= 0 && lastSel < pop.arts.size());
 		bShaderView.setLock(!canView)
@@ -906,12 +908,13 @@ class App {
 	void updateLimitLabels() {
 		sDepthMax.getValueLabel().setText(str(depth_max));
 		sWidthMax.getValueLabel().setText(str(width_max));
+		sMutationRate.getValueLabel().setText(str(round(mutationRate)));
 	}
 
 	void changeLimit(String name, float value) {
-		if (name.equals("limit_depth_max")) depth_max = max(1, round(value));
+		if (name.equals("limit_depth_max")) depth_max = max(3, round(value));
 		if (name.equals("limit_width_max")) {
-			width_max = max(1, round(value));
+			width_max = max(3, round(value));
 		}
 		updateLimitLabels();
 	}
@@ -1092,8 +1095,10 @@ class App {
 
 		sExpSize.getCaptionLabel().setFont(controlFont);
 		sInitialScale.getCaptionLabel().setFont(controlFont);
-		sDepthMax = addLimitSlider("limit_depth_max", "depth", 1, 32, depth_max);
-		sWidthMax = addLimitSlider("limit_width_max", "width", 1, 32, width_max);
+		sDepthMax = addLimitSlider("limit_depth_max", "depth", 3, 32, depth_max);
+		sWidthMax = addLimitSlider("limit_width_max", "width", 3, 32, width_max);
+		sMutationRate = addLimitSlider("mutationRate", "mut", 0, 2000, mutationRate);
+		sMutationRate.plugTo(this);
 
 		tGenNum = cp5time.addTextlabel("genenum").setFont(controlFont).setColor(grayNormal);
 		tPopSize = cp5time.addTextlabel("genepopsize").setFont(controlFont).setColor(grayNormal);
@@ -1267,6 +1272,10 @@ class App {
 
 void controlEvent(ControlEvent theEvent) {
   if (theEvent.isController()) {
+    if (theEvent.controller().getName().equals("saveProbabilityDefaults")) {
+      if (app != null && app.geneControls != null) app.geneControls.saveDefaults();
+      return;
+    }
     if (theEvent.controller().getName().startsWith("limit_")) {
       if (app != null) app.changeLimit(theEvent.controller().getName(), theEvent.controller().getValue());
       return;
