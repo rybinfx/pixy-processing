@@ -1276,6 +1276,10 @@ void controlEvent(ControlEvent theEvent) {
       if (app != null && app.geneControls != null) app.geneControls.saveDefaults();
       return;
     }
+    if (theEvent.controller().getName().equals("randomizeProbabilityParameters")) {
+      if (app != null && app.geneControls != null) app.geneControls.randomizeWeights();
+      return;
+    }
     if (theEvent.controller().getName().startsWith("limit_")) {
       if (app != null) app.changeLimit(theEvent.controller().getName(), theEvent.controller().getValue());
       return;

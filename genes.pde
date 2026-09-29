@@ -1,16 +1,19 @@
+import java.util.HashSet;
+
 float probability_exponent = 2;
 int depth_max = 6;
 int width_max = 6;
 // u_args in fragment.glsl contains 512 floats; each random value uses three.
 final int geneArgumentLimit = 512 / 3;
+long nextGeneId = 1;
 
 // Semantic graph types: vec3/col/img use vec3, pxy/pnt use vec2, sdf/ramp/cycle use float.
 // Ramp conventionally oscillates in 0..1; cycle progresses through the 1/0 seam.
 // Both are semantic conventions: their values are deliberately unrestricted.
-enum GeneValueType { VEC3, COL, IMG, PXY, PNT, SDF, RAMP, CYCLE }
+enum GeneValueType { VEC3, COL, IMG, PXY, PNT, SDF, RAMP, CYCLE, LINK }
 
 // Display order follows the flow from coordinates and parameters to images.
-GeneValueType[] visibleGeneTypes = { GeneValueType.PXY, GeneValueType.PNT, GeneValueType.RAMP, GeneValueType.CYCLE, GeneValueType.SDF, GeneValueType.COL, GeneValueType.IMG };
+GeneValueType[] visibleGeneTypes = { GeneValueType.PXY, GeneValueType.PNT, GeneValueType.RAMP, GeneValueType.CYCLE, GeneValueType.SDF, GeneValueType.COL, GeneValueType.IMG, GeneValueType.LINK };
 
 color geneTypeColor(GeneValueType valueType) {
 	if (valueType == GeneValueType.PXY) return color(87, 199, 227);
@@ -20,22 +23,25 @@ color geneTypeColor(GeneValueType valueType) {
 	if (valueType == GeneValueType.SDF) return color(115, 213, 165);
 	if (valueType == GeneValueType.COL) return color(189, 145, 237);
 	if (valueType == GeneValueType.IMG) return color(240, 159, 92);
+	if (valueType == GeneValueType.LINK) return color(205, 214, 228);
 	return color(144, 153, 168);
 }
 
 boolean geneEnabled(String name) {
+	if (name.equals("link")) return true;
 	// anycol requires the disabled vec3 branch, so hide it along with that type.
 	return geneOutputType(name) != GeneValueType.VEC3 && !name.equals("anycol");
 }
 
 GeneValueType geneOutputType(String name) {
+	if (name.equals("link")) return GeneValueType.LINK;
 	if (name.equals("anycol") || name.equals("colrnd") || name.equals("colhsv")) return GeneValueType.COL;
 	if (name.equals("sdfimg") || isImageBlend(name)) return GeneValueType.IMG;
-	if (name.equals("pxy") || name.equals("pxaddp") || name.equals("pxsubp") || name.equals("pxaddpx") || name.equals("pxsubpx") || name.equals("pxscale") || name.equals("pxrot") || isPositionTile(name)) return GeneValueType.PXY;
+	if (name.equals("pxy") || name.equals("pxaddp") || name.equals("pxsubp") || name.equals("pxaddpx") || name.equals("pxsubpx") || name.equals("pxscale") || name.equals("pxscaled") || name.equals("pxrot") || isPositionTile(name)) return GeneValueType.PXY;
 	if (name.equals("prnd")) return GeneValueType.PNT;
-	if (isSDFShape(name) || isSDFComposite(name)) return GeneValueType.SDF;
-	if (name.equals("rrnd") || name.equals("rsdfsin") || name.equals("rcsin") || name.equals("ravg") || name.equals("rmix")) return GeneValueType.RAMP;
-	if (name.equals("ctime") || name.equals("crnd") || name.equals("cdfcyc")) return GeneValueType.CYCLE;
+	if (isSDFShape(name) || isSDFComposite(name) || name.equals("edge")) return GeneValueType.SDF;
+	if (name.equals("rrnd") || name.equals("rsdfsin") || name.equals("rcsin") || name.equals("rsq") || name.equals("rtri") || name.equals("rup") || name.equals("ravg") || name.equals("rmix")) return GeneValueType.RAMP;
+	if (name.equals("ctime") || name.equals("crnd") || name.equals("cdfcyc") || name.equals("cadd") || name.equals("csub") || name.equals("cmul")) return GeneValueType.CYCLE;
 	return GeneValueType.VEC3;
 }
 
@@ -74,6 +80,7 @@ float geneSliderValue(String name) {
 	if (!geneEnabled(name)) return 0;
 	Float value = geneSliderValues.get(name);
 	if (value != null) return value;
+	if (name.equals("link")) return 0.5;
 	if (name.equals("prnd")) return 0.5;
 	if (name.equals("pxaddp")) return 0.4;
 	if (name.equals("pxsubp")) return 0.5;
@@ -188,10 +195,11 @@ String[] genesElse = new String[] {
 
 String[] genesColor = new String[] { "anycol", "colhsv" };
 String[] genesImage = new String[] { "sdfimg", "imgscreen", "imgadd", "imgmult", "imgsub", "imgoverlay", "imgdiff", "imgdarken", "imglighten" };
-String[] genesSDF = new String[] { "circle", "box", "roundbox", "triangle", "hexagon", "capsule", "ring", "point", "linex", "liney", "segment", "sunion", "sinter", "ssub", "smunion", "sminter", "smsub" };
-String[] genesPosition = new String[] { "pxaddp", "pxsubp", "pxaddpx", "pxsubpx", "pxscale", "pxrot", "tilex", "tiley", "tilexy", "tilerot" };
-String[] genesCycle = new String[] { "cdfcyc" };
-String[] genesRamp = new String[] { "rsdfsin", "rcsin", "ravg", "rmix" };
+String[] genesSDF = new String[] { "circle", "box", "roundbox", "triangle", "hexagon", "capsule", "ring", "point", "linex", "liney", "segment", "edge", "sunion", "sinter", "ssub", "smunion", "sminter", "smsub" };
+String[] genesPosition = new String[] { "pxaddp", "pxsubp", "pxaddpx", "pxsubpx", "pxscale", "pxscaled", "pxrot", "tilex", "tiley", "tilexy", "tilerot" };
+String[] genesCycle = new String[] { "cdfcyc", "cadd", "csub", "cmul" };
+String[] genesRamp = new String[] { "rsdfsin", "rcsin", "rsq", "rtri", "rup", "ravg", "rmix" };
+String[] genesLinks = new String[] { "link" };
 
 String[][] genesMethods = new String[][] {
 	genesBasicMath,
@@ -207,7 +215,8 @@ String[][] genesMethods = new String[][] {
 	genesPosition,
 	genesCycle,
 	genesRamp,
-	genesImage
+	genesImage,
+	genesLinks
 };
 
 
@@ -216,11 +225,12 @@ String[][] genesMethods = new String[][] {
 String[] geneFunctionPool = createGeneFunctionPool();
 
 int geneMinimumDepth(String name) {
+	if (name.equals("link")) return 1;
 	for (String value : genesValues) if (value.equals(name)) return 1;
 	// Each blend input must contain a complete sdfimg(shape(pxy), col, ramp).
 	if (isImageBlend(name)) return 4;
 	// SDF inputs need complete shape(pxy) branches below them.
-	return name.equals("sdfimg") || name.equals("cdfcyc") || name.equals("rsdfsin") || isSDFComposite(name) ? 3 : 2;
+	return name.equals("sdfimg") || name.equals("cdfcyc") || name.equals("rsdfsin") || name.equals("edge") || isSDFComposite(name) ? 3 : 2;
 }
 
 String[] geneTerminalCandidates(GeneValueType valueType) {
@@ -228,10 +238,10 @@ String[] geneTerminalCandidates(GeneValueType valueType) {
 	if (values.length > 0) return values;
 	String[] functions = genesReturning(geneFunctionPool, valueType);
 	int shortest = Integer.MAX_VALUE;
-	for (String name : functions) shortest = min(shortest, geneMinimumDepth(name));
+	for (String name : functions) if (!name.equals("link")) shortest = min(shortest, geneMinimumDepth(name));
 	ArrayList<String> terminals = new ArrayList<String>();
 	for (String name : functions) {
-		if (geneMinimumDepth(name) == shortest) terminals.add(name);
+		if (!name.equals("link") && geneMinimumDepth(name) == shortest) terminals.add(name);
 	}
 	return terminals.toArray(new String[0]);
 }
@@ -259,12 +269,16 @@ String getMethodGroupName(int n) {
 	if (n == 11) return "Cycle";
 	if (n == 12) return "Ramp";
 	if (n == 13) return "Image";
+	if (n == 14) return "Link";
 	return "Oops";
 }
 
 class Gene {
 	DNA p;
 	String type;
+	long id = nextGeneId++;
+	long linkTargetId = -1;
+	GeneValueType linkValueType = GeneValueType.VEC3;
 
 	ArrayList<Integer> adress = new ArrayList<Integer>();
 	int depth;
@@ -351,11 +365,14 @@ class Gene {
 		if (type.equals("colhsv")) nodes = 3;
 		if (isImageBlend(type)) nodes = 2;
 		if (isSDFShape(type)) nodes = 1;
-		if (type.equals("cdfcyc") || type.equals("rsdfsin") || type.equals("rcsin")) nodes = 1;
+		if (type.equals("cdfcyc") || type.equals("rsdfsin") || type.equals("rcsin") || type.equals("rsq") || type.equals("rtri") || type.equals("rup")) nodes = 1;
 		if (type.equals("ravg")) nodes = 2;
+		if (type.equals("cadd") || type.equals("csub") || type.equals("cmul")) nodes = 2;
 		if (type.equals("rmix")) nodes = 3;
+		if (type.equals("edge")) nodes = 3;
 		if (isSDFComposite(type)) nodes = isSmoothSDFComposite(type) ? 3 : 2;
 		if (type.equals("pxaddp") || type.equals("pxsubp") || type.equals("pxaddpx") || type.equals("pxsubpx") || type.equals("pxscale") || type.equals("pxrot")) nodes = 2;
+		if (type.equals("pxscaled")) nodes = 3;
 		if (isPositionTile(type)) nodes = type.equals("tilexy") ? 3 : 2;
 
 		if (type == "prnd") {
@@ -403,17 +420,27 @@ class Gene {
 	}
 
 	GeneValueType outputType() {
-		return geneOutputType(type);
+		// LINK is its own node category; connections carry the referenced value type.
+		return isLink() ? linkValueType : geneOutputType(type);
+	}
+
+	boolean isLink() {
+		return type.equals("link");
 	}
 
 	GeneValueType inputType(int index) {
 		if (index < 0 || index >= nodes) throw new IllegalArgumentException("Invalid gene input");
 		if (type.equals("pxscale") || isPositionTile(type)) return index == 0 ? GeneValueType.PXY : GeneValueType.RAMP;
 		if (type.equals("pxrot")) return index == 0 ? GeneValueType.PXY : GeneValueType.CYCLE;
+		if (type.equals("pxscaled")) {
+			if (index == 0) return GeneValueType.PXY;
+			return index == 1 ? GeneValueType.CYCLE : GeneValueType.RAMP;
+		}
 		if (type.equals("pxaddp") || type.equals("pxsubp")) return index == 0 ? GeneValueType.PXY : GeneValueType.PNT;
 		if (type.equals("pxaddpx") || type.equals("pxsubpx") || isSDFShape(type)) return GeneValueType.PXY;
 		if (type.equals("cdfcyc") || type.equals("rsdfsin")) return GeneValueType.SDF;
-		if (type.equals("rcsin")) return GeneValueType.CYCLE;
+		if (type.equals("rcsin") || type.equals("rsq") || type.equals("rtri") || type.equals("rup")) return GeneValueType.CYCLE;
+		if (type.equals("cadd") || type.equals("csub") || type.equals("cmul")) return index == 0 ? GeneValueType.CYCLE : GeneValueType.RAMP;
 		if (type.equals("ravg") || type.equals("rmix")) return GeneValueType.RAMP;
 		if (type.equals("colhsv")) return index == 0 ? GeneValueType.CYCLE : GeneValueType.RAMP;
 		if (isImageBlend(type)) return GeneValueType.IMG;
@@ -422,6 +449,7 @@ class Gene {
 			return index == 1 ? GeneValueType.COL : GeneValueType.RAMP;
 		}
 		if (isSDFComposite(type)) return index < 2 ? GeneValueType.SDF : GeneValueType.RAMP;
+		if (type.equals("edge")) return index == 0 ? GeneValueType.SDF : GeneValueType.RAMP;
 		// Existing operations and anycol all accept only vec3 inputs.
 		return GeneValueType.VEC3;
 	}
@@ -431,6 +459,16 @@ class Gene {
 	}
 
 	String get() {
+		return get(null);
+	}
+
+	String get(HashMap<Long, String> expressions) {
+		if (expressions != null && expressions.containsKey(id)) return expressions.get(id);
+		if (isLink()) {
+			Gene target = p.getGeneById(linkTargetId);
+			if (target == null) throw new IllegalStateException("Unresolved link");
+			return target.get(expressions);
+		}
 		if (type == "sintime") return "g_sintime(" + Float.toString(phaseOffset) + ")";
 
 		String temp = "";
@@ -452,7 +490,7 @@ class Gene {
 				for (int i = 0; i < children.size(); i++) {
 					if (i > 0) temp += ",";
 
-					temp += children.get(i).get();
+					temp += children.get(i).get(expressions);
 
 				}
 			}
@@ -469,6 +507,9 @@ class Gene {
 	Gene copy(DNA p_) {
 		// Copying a branch must not allocate unused random arguments in its owner.
 		Gene temp = new Gene(p_, type, false);
+		temp.id = id;
+		temp.linkTargetId = linkTargetId;
+		temp.linkValueType = linkValueType;
 		temp.adress = new ArrayList<Integer>(adress);
 		temp.depth = depth;
 		temp.nodes = nodes;

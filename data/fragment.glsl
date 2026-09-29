@@ -68,6 +68,17 @@ vec2 g_pxscale(vec2 p, float ramp) {
 	return p / ramp;
 }
 
+// Ramp 0..1 sets visible directional scale 0..2 about the origin.
+vec2 g_pxscaled(vec2 p, float cycle, float ramp) {
+	float angle = cycle * 2.0 * M_PI;
+	vec2 axis = vec2(cos(angle), sin(angle));
+	float scale = 2.0 * clamp(ramp, 0.0, 1.0);
+	// Approximate zero with a near-zero scale to keep coordinates finite.
+	scale = max(scale, 0.000001);
+	float parallel = dot(p, axis);
+	return p + (parallel / scale - parallel) * axis;
+}
+
 // A cycle is measured in turns; 0 and 1 produce the same rotation.
 vec2 g_pxrot(vec2 p, float cycle) {
 	float angle = cycle * 2.0 * M_PI;
@@ -76,9 +87,9 @@ vec2 g_pxrot(vec2 p, float cycle) {
 	return vec2(c*p.x - s*p.y, s*p.x + c*p.y);
 }
 
-// Ramp 0..1 maps to the nearest integer 1..10. Mutation can exceed 0..1.
+// Ramp 0..1 maps to the nearest integer 1..6. Mutation can exceed 0..1.
 float tileCount(float ramp) {
-	return floor(1.0 + 9.0 * clamp(ramp, 0.0, 1.0) + 0.5);
+	return floor(1.0 + 5.0 * clamp(ramp, 0.0, 1.0) + 0.5);
 }
 
 // Default fullscreen coordinates span -1..1 in X; Y follows image aspect.
@@ -212,6 +223,13 @@ float g_smsub(float a, float b, float k) {
 	return g_sminter(a, -b, k);
 }
 
+// Outline centered on the input's zero contour; width is total thickness.
+float g_edge(float distance, float width, float smoothness) {
+	float halfWidth = 0.5 * clamp(width, 0.0, 1.0);
+	if (smoothness == 0.0) return abs(distance) - halfWidth;
+	return g_sminter(distance - halfWidth, -distance - halfWidth, smoothness);
+}
+
 // Image-local UVs: bottom-left (0, 0), top-right (1, 1).
 vec3 g_uv() {
 	vec2 sampleOffset = vec2(float(iterX), float(iterY)) / float(u_aa);
@@ -248,9 +266,9 @@ vec3 g_colrnd(int n) {
 	return g_arg(n);
 }
 
-// Hue is a cycle; saturation and value use the 0..1 HSV range.
+// Ten input cycles make one hue revolution; saturation and value use 0..1.
 vec3 g_colhsv(float hue, float saturation, float value) {
-	vec3 phase = fract(fract(hue) + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0));
+	vec3 phase = fract(fract(hue * 0.1) + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0));
 	vec3 rgb = clamp(abs(phase * 6.0 - 3.0) - 1.0, 0.0, 1.0);
 	return clamp(value, 0.0, 1.0) * mix(vec3(1.0), rgb, clamp(saturation, 0.0, 1.0));
 }
@@ -270,6 +288,19 @@ float g_cdfcyc(float distance) {
 	return distance;
 }
 
+// Cycle arithmetic remains unrestricted; consumers interpret the phase.
+float g_cadd(float cycle, float ramp) {
+	return cycle + ramp;
+}
+
+float g_csub(float cycle, float ramp) {
+	return cycle - ramp;
+}
+
+float g_cmul(float cycle, float ramp) {
+	return cycle * ramp;
+}
+
 // One sine period per distance unit, remapped from -1..1 to 0..1.
 float g_rsdfsin(float distance) {
 	return 0.5 + 0.5 * sin(distance * 2.0 * M_PI);
@@ -278,6 +309,19 @@ float g_rsdfsin(float distance) {
 // Cycle 0..1 covers one sine period; output is remapped to 0..1.
 float g_rcsin(float cycle) {
 	return 0.5 + 0.5 * sin(cycle * 2.0 * M_PI);
+}
+
+// Wrap all phases, including negative cycles, into one period.
+float g_rsq(float cycle) {
+	return 1.0 - step(0.5, fract(cycle));
+}
+
+float g_rtri(float cycle) {
+	return 1.0 - abs(2.0 * fract(cycle) - 1.0);
+}
+
+float g_rup(float cycle) {
+	return fract(cycle);
 }
 
 float g_ravg(float a, float b) {

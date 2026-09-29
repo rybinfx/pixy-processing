@@ -1,4 +1,4 @@
-// The probability page: grouped sliders and a Save button at the end.
+// The probability page: grouped sliders, then Save and Randomize buttons.
 final int geneControlRowHeight = 40;
 
 class GeneControls {
@@ -8,6 +8,7 @@ class GeneControls {
   float x, y, w, h, scroll, contentHeight;
   boolean visible;
   Button saveButton;
+  Button randomizeButton;
   String saveLabel = "save";
   int saveFeedbackUntil;
   ControlFont probabilityFont;
@@ -24,6 +25,14 @@ class GeneControls {
     saveButton.getCaptionLabel().setFont(owner.controlFont).setColor(color(255))
       .align(ControlP5.CENTER, ControlP5.CENTER);
     saveButton.hide();
+    randomizeButton = cp5time.addButton("randomizeProbabilityParameters");
+    randomizeButton.setLabel("randomize")
+      .setColorBackground(owner.grayNormal)
+      .setColorForeground(owner.grayNormalOver)
+      .setColorActive(owner.grayNormalDown);
+    randomizeButton.getCaptionLabel().setFont(owner.controlFont).setColor(color(255))
+      .align(ControlP5.CENTER, ControlP5.CENTER);
+    randomizeButton.hide();
   }
 
   void addGroup(GeneValueType valueType) {
@@ -44,7 +53,7 @@ class GeneControls {
       slider.setBroadcast(false);
       slider.setId(id).setRange(0, 1).setValue(geneSliderValue(names[i]))
         .setScrollSensitivity(0)
-        .setLabel(names[i])
+        .setLabel(names[i].equals("link") ? "LNK" : names[i])
         .setLabelVisible(true);
       owner.styleSlider(slider);
       slider.getCaptionLabel().setFont(owner.controlFont)
@@ -53,7 +62,7 @@ class GeneControls {
         .align(ControlP5.RIGHT, ControlP5.CENTER).setPadding(9, 0).setVisible(true);
       slider.hide();
       slider.setBroadcast(true);
-      GeneControl control = new GeneControl(names[i], slider, valueFamily, i);
+      GeneControl control = new GeneControl(names[i], slider, valueFamily, i, group.valueType);
       controls.add(control);
       group.controls.add(control);
     }
@@ -64,7 +73,7 @@ class GeneControls {
     x = px; y = py; w = pw; h = ph;
     contentHeight = 0;
     for (GeneControlGroup group : groups) contentHeight += group.height()+10;
-    contentHeight += 32; // Final group gap, Save button, and bottom padding.
+    contentHeight += 32; // Final group gap, button row, and bottom padding.
     scroll = constrain(scroll, 0, max(0, contentHeight-h));
     float top = y-scroll;
     float columnWidth = (w-50)/4;
@@ -90,9 +99,17 @@ class GeneControls {
       }
       top += group.height()+10;
     }
-    saveButton.setPosition(x+10, top).setSize(max(1, int(w-20)), 22);
-    if (visible && top >= y && top+22 <= y+h) saveButton.show();
-    else saveButton.hide();
+    int buttonWidth = max(1, int((w-30)/2));
+    saveButton.setPosition(x+10, top).setSize(buttonWidth, 22);
+    randomizeButton.setPosition(x+20+buttonWidth, top)
+      .setSize(max(1, int(w-30)-buttonWidth), 22);
+    if (visible && top >= y && top+22 <= y+h) {
+      saveButton.show();
+      randomizeButton.show();
+    } else {
+      saveButton.hide();
+      randomizeButton.hide();
+    }
     if (millis() >= saveFeedbackUntil) saveLabel = "save";
     saveButton.setLabel(saveLabel);
     updatePercentages();
@@ -104,10 +121,35 @@ class GeneControls {
     saveButton.setLabel(saveLabel);
   }
 
+  void randomizeWeights() {
+    for (String[] names : new String[][] {genesValues, geneFunctionPool}) {
+      for (String name : names) geneSliderValues.put(name, geneEnabled(name) ? random(1) : 0.0f);
+    }
+    // Every type still needs a terminating value or complete primitive branch.
+    for (GeneValueType valueType : GeneValueType.values()) {
+      String[] terminals = geneTerminalCandidates(valueType);
+      if (terminals.length > 0 && geneWeightTotal(terminals) <= 0) {
+        geneSliderValues.put(terminals[(int) random(terminals.length)], random(0.01, 1));
+      }
+    }
+    saveLabel = "save";
+    saveFeedbackUntil = 0;
+    saveButton.setLabel(saveLabel);
+    updatePercentages();
+    owner.actionMainNew();
+  }
+
   void updatePercentages() {
     for (GeneControl control : controls) {
+      // Keep controls synchronized with the stored raw weights.
+      float rawValue = geneSliderValue(control.name);
+      if (control.slider.getValue() != rawValue) {
+        control.slider.setBroadcast(false);
+        control.slider.setValue(rawValue);
+        control.slider.setBroadcast(true);
+      }
       float total = geneWeightTotal(genesReturning(
-        control.valueFamily ? genesValues : geneFunctionPool, geneOutputType(control.name)));
+        control.valueFamily ? genesValues : geneFunctionPool, control.valueType));
       float percent = total > 0 ? 100 * geneProbability(control.name) / total : 0;
       control.slider.getValueLabel().setText(nf(percent, 1, 1)+"%");
     }
@@ -182,7 +224,7 @@ class GeneControlGroup {
 
   GeneControlGroup(GeneValueType valueType_) {
     valueType = valueType_;
-    title = valueType.toString().toLowerCase();
+    title = valueType == GeneValueType.LINK ? "lnk" : valueType.toString().toLowerCase();
   }
   int valueRows() { return (valueCount+3)/4; }
   int functionRows() { return (functionCount+3)/4; }
@@ -192,6 +234,7 @@ class GeneControlGroup {
 
 class GeneControl {
   String name;
+  GeneValueType valueType;
   Slider slider;
   boolean valueFamily;
   int familyIndex;
@@ -199,8 +242,9 @@ class GeneControl {
   boolean visible;
   GeneValueType[] inputTypes = new GeneValueType[0];
 
-  GeneControl(String name_, Slider slider_, boolean valueFamily_, int familyIndex_) {
+  GeneControl(String name_, Slider slider_, boolean valueFamily_, int familyIndex_, GeneValueType valueType_) {
     name = name_; slider = slider_;
+    valueType = valueType_;
     valueFamily = valueFamily_;
     familyIndex = familyIndex_;
     if (!valueFamily) {

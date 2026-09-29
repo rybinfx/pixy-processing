@@ -23,8 +23,36 @@ class DNA {
 
 	void construct() {
 		enforceGraphLimits();
+		repairLinks();
+		sortArgs();
 		validateTypes();
-		code = "vec3 col = " + genes.get(0).get() + ";";
+		HashMap<Long, String> expressions = new HashMap<Long, String>();
+		StringBuilder statements = new StringBuilder();
+		String root = emitGene(genes.get(0), expressions, new HashSet<Long>(), statements);
+		code = statements.toString() + "vec3 col = " + root + ";";
+	}
+
+	// Emit each shared dependency once, before its consumers.
+	String emitGene(Gene gene, HashMap<Long, String> expressions, HashSet<Long> visiting, StringBuilder statements) {
+		if (expressions.containsKey(gene.id)) return expressions.get(gene.id);
+		if (!visiting.add(gene.id)) throw new IllegalStateException("Cyclic link graph");
+		if (gene.isLink()) {
+			Gene target = getGeneById(gene.linkTargetId);
+			if (target == null) throw new IllegalStateException("Unresolved link");
+			String result = emitGene(target, expressions, visiting, statements);
+			expressions.put(gene.id, result);
+			visiting.remove(gene.id);
+			return result;
+		}
+		for (Gene child : gene.getChildren()) emitGene(child, expressions, visiting, statements);
+		GeneValueType type = gene.outputType();
+		String glslType = type == GeneValueType.PXY || type == GeneValueType.PNT ? "vec2" :
+			(type == GeneValueType.COL || type == GeneValueType.IMG || type == GeneValueType.VEC3 ? "vec3" : "float");
+		String name = "node" + expressions.size();
+		statements.append(glslType).append(" ").append(name).append(" = ").append(gene.get(expressions)).append("; ");
+		expressions.put(gene.id, name);
+		visiting.remove(gene.id);
+		return name;
 	}
 
 	void validateTypes() {
@@ -32,6 +60,10 @@ class DNA {
 			throw new IllegalStateException("Graph output must be img");
 		}
 		for (Gene gene : genes) {
+			if (gene.isLink()) {
+				Gene target = getGeneById(gene.linkTargetId);
+				if (target == null || target.outputType() != gene.outputType()) throw new IllegalStateException("Invalid link target");
+			}
 			ArrayList<Gene> children = gene.getChildren();
 			for (int i = 0; i < children.size(); i++) {
 				if (children.get(i).outputType() != gene.inputType(i)) {
@@ -74,6 +106,9 @@ class DNA {
 	}
 
 	void sSwap(DNA p1, Gene g1, DNA p2, Gene g2) {
+		if (g1.outputType() != g2.outputType()) return;
+		DNA before1 = p1.copy(true);
+		DNA before2 = p2.copy(true);
 		ArrayList<Gene> b1 = p1.grabBranch(p2, g1);
 		ArrayList<Gene> b2 = p2.grabBranch(p1, g2);
 
@@ -108,6 +143,10 @@ class DNA {
 		p2.sortArgs();
 		p1.enforceGraphLimits();
 		p2.enforceGraphLimits();
+		if (p1.hasGraphCycle() || p2.hasGraphCycle()) {
+			p1.restoreStructure(before1);
+			p2.restoreStructure(before2);
+		}
 	}
 
 	// MUTATION
@@ -118,6 +157,7 @@ class DNA {
 		mutateArgs();
 		mutateParameters();
 		for (int i = 0; i < genes.size()*(app.mutationRate/100*0.05); i++) {
+			DNA before = copy(true);
 			Gene g = genes.get((int) random(genes.size()));
 			Gene g2 = genes.get((int) random(genes.size()));
 			int act = (int) random(6);
@@ -128,6 +168,8 @@ class DNA {
 			if (act == 3) mSwap(g,g2);
 			if (act == 4) mCopy(g,g2);
 			enforceGraphLimits();
+			// Preserve existing connections by rejecting structural edits that cycle.
+			if (hasGraphCycle()) restoreStructure(before);
 
 		}
 		sortArgs();
@@ -151,8 +193,10 @@ class DNA {
 	}
 
 	void mCopy(Gene g1, Gene g2) {
+		if (g1 == g2) return;
 		if (g1.outputType() != g2.outputType()) return;
 		ArrayList<Gene> b1 = grabBranch(g1);
+		renewGeneIds(b1);
 
 		int ind = geneIndex(g2);
 		deleteBranch(g2);
@@ -191,6 +235,7 @@ class DNA {
 	}
 
 	void mChange(Gene g) {
+		if (g.isLink()) return;
 		boolean newIsValue;
 		if (isValue(g)) newIsValue = random(1) > 0.2;
 		else newIsValue = random(1) < 0.2;
@@ -215,6 +260,10 @@ class DNA {
 	void mInsert(Gene g) {
 		int index = geneIndex(g);
 		Gene newGene = getGene(false, g.outputType(), depthLimit-g.depth+1);
+		if (newGene.isLink()) {
+			if (!g.isLink()) replaceGene(g, newGene);
+			return;
+		}
 		if (newGene.nodes == 0) return; // A value/time leaf cannot wrap an existing branch.
 		// Preserve the branch in a matching slot (pxscale takes pxy first).
 		int input = -1;
@@ -325,24 +374,44 @@ class DNA {
 	}
 
 	Gene getGene(boolean isVal, GeneValueType requiredType, int remainingDepth) {
+		return getGene(isVal, requiredType, remainingDepth, true);
+	}
+
+	int minimumTypeDepth(GeneValueType type) {
+		return type == GeneValueType.IMG ? 3 : type == GeneValueType.SDF ? 2 : 1;
+	}
+
+	Gene getGene(boolean isVal, GeneValueType requiredType, int remainingDepth, boolean allowLinks) {
 		if (requiredType == GeneValueType.VEC3) throw new IllegalStateException("vec3 generation is disabled");
 		// SDF ends in a primitive; img ends in sdfimg with complete typed inputs.
 		String[] pool = isVal ? geneTerminalCandidates(requiredType) : genesReturning(geneFunctionPool, requiredType);
 		ArrayList<String> fitting = new ArrayList<String>();
 		for (String name : pool) {
-			if (geneMinimumDepth(name) <= remainingDepth) fitting.add(name);
+			if (!name.equals("link") && geneMinimumDepth(name) <= remainingDepth) fitting.add(name);
+		}
+		if (allowLinks && remainingDepth >= minimumTypeDepth(requiredType) && genes != null) {
+			for (Gene existing : genes) {
+				if (existing.outputType() == requiredType) {
+					fitting.add("link");
+					break;
+				}
+			}
 		}
 		String[] candidates = fitting.toArray(new String[0]);
 		int index = pickWeighted(candidates);
-		if (index >= 0) return new Gene(this, candidates[index]);
-		int minimumDepth = requiredType == GeneValueType.IMG ? 3 : requiredType == GeneValueType.SDF ? 2 : 1;
+		if (index >= 0) {
+			Gene result = new Gene(this, candidates[index]);
+			if (result.isLink()) result.linkValueType = requiredType;
+			return result;
+		}
+		int minimumDepth = minimumTypeDepth(requiredType);
 		if (remainingDepth < minimumDepth) {
 			throw new IllegalStateException("Insufficient depth for " + requiredType);
 		}
 		if (requiredType == GeneValueType.COL) return new Gene(this, "colrnd");
 		if (requiredType == GeneValueType.IMG) return new Gene(this, "sdfimg");
 		if (requiredType == GeneValueType.SDF) return new Gene(this, "circle");
-		if (!isVal) return getGene(true, requiredType, remainingDepth);
+		if (!isVal) return getGene(true, requiredType, remainingDepth, false);
 		if (requiredType == GeneValueType.PXY) return new Gene(this, "pxy");
 		if (requiredType == GeneValueType.PNT) return new Gene(this, "prnd");
 		if (requiredType == GeneValueType.RAMP) return new Gene(this, "rrnd");
@@ -372,13 +441,16 @@ class DNA {
 	}
 
 	void reserveInputs(Gene node, int depth, int[] widths) {
+		// Keep enough room to materialize a primitive if a link loses all targets.
+		if (node.isLink()) return;
 		reserveMinimum(node.outputType(), depth, widths, -1);
 		widths[depth]++;
 		for (int i = 0; i < node.nodes; i++) reserveMinimum(node.inputType(i), depth+1, widths, 1);
 	}
 
 	boolean inputsFit(Gene node, int depth, int[] widths) {
-		if (geneMinimumDepth(node.type) > depthLimit-depth+1) return false;
+		int minimumDepth = node.isLink() ? minimumTypeDepth(node.outputType()) : geneMinimumDepth(node.type);
+		if (minimumDepth > depthLimit-depth+1) return false;
 		int[] proposed = widths.clone();
 		reserveInputs(node, depth, proposed);
 		for (int i = 1; i <= depthLimit; i++) {
@@ -411,7 +483,7 @@ class DNA {
 	}
 
 	void appendTerminalBranch(GeneValueType requiredType, ArrayList<Integer> address, ArrayList<Gene> target, int[] levelWidths) {
-		Gene node = getGene(true, requiredType, depthLimit-address.size()+1);
+		Gene node = getGene(true, requiredType, depthLimit-address.size()+1, false);
 		node.setAdress(new ArrayList<Integer>(address));
 		target.add(node);
 		if (levelWidths != null) reserveInputs(node, node.depth, levelWidths);
@@ -420,6 +492,99 @@ class DNA {
 			childAddress.add(i);
 			appendTerminalBranch(node.inputType(i), childAddress, target, levelWidths);
 		}
+	}
+
+	// LINKS
+
+	Gene getGeneById(long id) {
+		for (Gene gene : genes) if (gene.id == id) return gene;
+		return null;
+	}
+
+	boolean dependsOn(Gene node, long targetId, HashSet<Long> visited) {
+		if (node.id == targetId) return true;
+		if (!visited.add(node.id)) return false;
+		if (node.isLink()) {
+			Gene target = getGeneById(node.linkTargetId);
+			return target != null && dependsOn(target, targetId, visited);
+		}
+		for (Gene child : node.getChildren()) {
+			if (dependsOn(child, targetId, visited)) return true;
+		}
+		return false;
+	}
+
+	boolean hasGraphCycle() {
+		HashSet<Long> visited = new HashSet<Long>();
+		HashSet<Long> visiting = new HashSet<Long>();
+		for (Gene gene : genes) if (hasGraphCycle(gene, visited, visiting)) return true;
+		return false;
+	}
+
+	boolean hasGraphCycle(Gene gene, HashSet<Long> visited, HashSet<Long> visiting) {
+		if (visiting.contains(gene.id)) return true;
+		if (visited.contains(gene.id)) return false;
+		visiting.add(gene.id);
+		if (gene.isLink()) {
+			Gene target = getGeneById(gene.linkTargetId);
+			// Deleted targets remain unresolved until all mutations finish.
+			if (target != null && hasGraphCycle(target, visited, visiting)) return true;
+		} else {
+			for (Gene child : gene.getChildren()) {
+				if (hasGraphCycle(child, visited, visiting)) return true;
+			}
+		}
+		visiting.remove(gene.id);
+		visited.add(gene.id);
+		return false;
+	}
+
+	void repairLinks() {
+		while (true) {
+			Gene unresolved = null;
+			for (Gene gene : genes) {
+				if (!gene.isLink()) continue;
+				Gene target = getGeneById(gene.linkTargetId);
+				if (target == null || target.outputType() != gene.outputType()) {
+					unresolved = gene;
+					break;
+				}
+			}
+			if (unresolved == null) return;
+			ArrayList<Gene> candidates = new ArrayList<Gene>();
+			for (Gene target : genes) {
+				if (target.outputType() != unresolved.outputType()) continue;
+				// Do not choose another unresolved link as a temporary placeholder.
+				if (target.isLink() && getGeneById(target.linkTargetId) == null) continue;
+				if (!dependsOn(target, unresolved.id, new HashSet<Long>())) candidates.add(target);
+			}
+			if (!candidates.isEmpty()) {
+				unresolved.linkTargetId = candidates.get((int) random(candidates.size())).id;
+			} else {
+				// No legal target: materialize a minimal branch of the same type.
+				Gene primitive = getGene(true, unresolved.outputType(), depthLimit-unresolved.depth+1, false);
+				replaceGene(unresolved, primitive);
+			}
+		}
+	}
+
+	void renewGeneIds(ArrayList<Gene> copied) {
+		HashMap<Long, Long> ids = new HashMap<Long, Long>();
+		for (Gene gene : copied) {
+			long previousId = gene.id;
+			gene.id = nextGeneId++;
+			ids.put(previousId, gene.id);
+		}
+		for (Gene gene : copied) {
+			Long targetId = ids.get(gene.linkTargetId);
+			if (gene.isLink() && targetId != null) gene.linkTargetId = targetId;
+		}
+	}
+
+	void restoreStructure(DNA snapshot) {
+		genes = snapshot.genes;
+		args = snapshot.args;
+		for (Gene gene : genes) gene.p = this;
 	}
 
 	// GENERAL METHODS
@@ -468,7 +633,7 @@ class DNA {
 
 		int depth = a.size()+1;
 		Gene lastGene = getGene(chooseValue(depth, levelWidths[depth+1]), requiredType, depthLimit-depth+1);
-		if (!inputsFit(lastGene, depth, levelWidths)) lastGene = getGene(true, requiredType, depthLimit-depth+1);
+		if (!inputsFit(lastGene, depth, levelWidths)) lastGene = getGene(true, requiredType, depthLimit-depth+1, false);
 		reserveInputs(lastGene, depth, levelWidths);
 		genes.add(lastGene);
 		ArrayList<Integer> newAdress = new ArrayList<Integer>(a);
@@ -500,6 +665,7 @@ class DNA {
 	}
 
 	void changeGene(Gene g) {
+		if (g.isLink()) return;
 		replaceGene(g, getGene(isValue(g), g.outputType(), depthLimit-g.depth+1));
 	}
 
@@ -556,11 +722,12 @@ class DNA {
 
 	//	COPY
 
-	ArrayList<Gene> copyGenes(DNA p) {
+	ArrayList<Gene> copyGenes(DNA p, boolean freshIds) {
 		ArrayList<Gene> temp = new ArrayList<Gene>();
 		for (Gene g : genes) {
 			temp.add(g.copy(p));
 		}
+		if (freshIds) renewGeneIds(temp);
 		return temp;
 	}
 
@@ -573,11 +740,15 @@ class DNA {
 	}
 
 	DNA copy() {
+		return copy(false);
+	}
+
+	DNA copy(boolean preserveIds) {
 
 		DNA temp = new DNA();
 		temp.depthLimit = depthLimit;
 		temp.widthLimit = widthLimit;
-		temp.genes = copyGenes(temp);
+		temp.genes = copyGenes(temp, !preserveIds);
 		temp.code = code;
 		temp.scale = scale;
 		temp.offset = offset.get();
