@@ -2,10 +2,9 @@ String[] genesValues = new String[] {
 	"x",
 	"y",
 	"rndm",
-  //"rndm2",
 	"rndm3"
 };
-float[] genesValuesRate = new float[] {1, 1, 0.5, 0.5};
+float[] genesValuesRate = new float[] {1, 1, 0.5, 0.5, 0.5};
 
 
 String[] genesBasicMath = new String[] {
@@ -75,8 +74,8 @@ String[] genesElse = new String[] {
 	"combine",
 	"setH",
 	"setS",
-	"setV"
-	//"noise2"
+	"setV",
+	"noise2"
 };
 float[] genesElseRate = new float[] {1, 1, 1, 1, 1, 1, 1};
 
@@ -91,9 +90,7 @@ String[][] genesMethods = new String[][] {
 	genesLogic,
 	genesElse
 };
-//float[] genesMethodsGroupRate = new float[] {1, 0.01, 0.1, 0.1, 0.1, 0.1, 0.1, 0.05};
-float[] genesMethodsGroupRate = new float[] {1.5, 0.01, 0.01, 0.1, 0.1, 0.1, 0.1, 0.1};
-
+float[] genesMethodsGroupRate = new float[] {1, 0.01, 0.1, 0.1, 0.1, 0.1, 0.1, 0.05};
 
 float[][] genesMethodsRate = new float[][] {
 	genesBasicMathRate,

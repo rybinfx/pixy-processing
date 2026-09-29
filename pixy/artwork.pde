@@ -49,7 +49,7 @@ class Artwork {
 
 	void display(float x_, float y_, float w_, float h_) {
 		update(x_,y_,w_,h_);
-		setShader();
+		setShader(g);
 		shader(shader);
 		rect(x_,y_,w,h);
 		resetShader();
@@ -62,9 +62,11 @@ class Artwork {
 
 	}
 
-	void setShader() {
+	void setShader(PGraphics target) {
 		shader.set("u_g_off", g_offset.x, g_offset.y);
-		shader.set("u_g_scale", g_scale);
+		// gl_FragCoord uses framebuffer pixels; layout and mouse input use points.
+		float pixelScale = (float) target.pixelWidth / target.width;
+		shader.set("u_g_scale", g_scale / pixelScale);
 		shader.set("u_off", dna.offset.x, dna.offset.y);
 		shader.set("u_scale", dna.scale);
 		shader.set("u_hoff", dna.hueOffset);
@@ -131,34 +133,52 @@ class Artwork {
 
 	// EXPORTING
 
-	void render(String path) {
-		update(0,0,app.expSize,app.expSize,app.expSize);
+	boolean render(String path) {
+		update(0,0,renderer.width,renderer.height,renderer.height);
 
-		setShader();
+		setShader(renderer);
 
 		renderer.beginDraw();
 		renderer.shader(shader);
-		renderer.rect(0,0,app.expSize,app.expSize);
+		renderer.rect(0,0,renderer.width,renderer.height);
 		renderer.endDraw();
-		renderer.save(path);
 		resetShader();
+		// PGraphics.save() may be asynchronous; encoding needs complete files.
+		return renderer.get().save(path);
 	}
 
-	void export(String path) {
-		PGraphics export = createGraphics(app.expSize,app.expSize,P2D);
+	boolean export(String path) {
+		PGraphics export = createExportGraphics(app.expSize);
 		update(0,0,app.expSize,app.expSize,app.expSize);
 
-		setShader();
+		setShader(export);
 
 		export.beginDraw();
 		export.shader(shader);
 		export.rect(0,0,app.expSize,app.expSize);
 		export.endDraw();
-		export.save(path);
 		resetShader();
+		return export.get().save(path);
 	}
 
 	void export() {
-		export("export/image_"+int(random(999999))+".jpg");
+		java.nio.file.Path output = null;
+		boolean saved = false;
+		try {
+			output = reserveOutput(false);
+			saved = export(output.toString());
+			if (saved) println("Image saved: " + output);
+			else println("Could not save image: " + output);
+		} catch (Exception error) {
+			println("Image export failed: " + error.getMessage());
+		} finally {
+			if (!saved && output != null) {
+				try {
+					java.nio.file.Files.deleteIfExists(output);
+				} catch (IOException error) {
+					println("Could not remove incomplete image: " + output);
+				}
+			}
+		}
 	}
 }

@@ -1,3 +1,5 @@
-/data/temp/
-/renders/
-/export/
+
+/pixy/data/temp/
+/pixy/renders/
+/pixy/export/
+/outputs/
