@@ -1,5 +1,44 @@
 // Supporting code for the archive release.
 
+// macOS Dock icon for sketches launched from Processing.
+// PJOGL.setIcon() only updates Windows icons in Processing 4.5.6.
+// Keep the direct pixels alive: JOGL's NSImage uses their native storage.
+java.nio.ByteBuffer appIconPixels;
+
+void setSketchAppIcon(PImage icon) {
+  if (platform != MACOSX || icon == null) return;
+  try {
+    final java.lang.reflect.Method setIcon = Class.forName(
+      "jogamp.newt.driver.macosx.DisplayDriver").getDeclaredMethod(
+      "setAppIcon0", Object.class, int.class, boolean.class, int.class, int.class);
+    setIcon.setAccessible(true);
+    icon.loadPixels();
+    appIconPixels = java.nio.ByteBuffer.allocateDirect(icon.width * icon.height * 4);
+    for (int argb : icon.pixels) {
+      appIconPixels.put((byte) (argb >> 16));
+      appIconPixels.put((byte) (argb >> 8));
+      appIconPixels.put((byte) argb);
+      appIconPixels.put((byte) (argb >> 24));
+    }
+    appIconPixels.rewind();
+    final int iconWidth = icon.width;
+    final int iconHeight = icon.height;
+    // Queue on AppKit without waiting while setup holds the GL context.
+    jogamp.nativewindow.macosx.OSXUtil.RunOnMainThread(false, false, new Runnable() {
+      public void run() {
+        try {
+          setIcon.invoke(null, appIconPixels, 0, true, iconWidth, iconHeight);
+        } catch (Exception error) {
+          println("Could not set the Pixy Dock icon: " + error);
+        }
+      }
+    });
+  } catch (Exception | LinkageError error) {
+    // This optional integration must not prevent startup on other JOGL versions.
+    println("Could not set the Pixy Dock icon: " + error);
+  }
+}
+
 // macOS native resize
 
 // Processing's macOS reshape callback can call back into the native window

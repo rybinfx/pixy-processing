@@ -37,9 +37,10 @@ The current sketch has been tested with Processing 4.5.6 on macOS 26.6.2.
 
 - Click **NEW** to generate a random population.
 - Select images for evolution with the corner button.
-- Click **DEVELOP** to generate new variations from the selected images.
+- Click **DEVELOP** or press **x** to generate new variations from the selected images.
 - Use **Cmd/Ctrl-click** or hover and press **Space** to evolve an image together with the current selection.
-- Click **REPEAT** to generate another population from the previous parents. Currently selected images join the parent pool for this and subsequent repeats.
+- Click **REPEAT** to generate another population from the last selection.
+- Use **NUM + / −** to increase or decrease population size.
 
 ## Inspecting an image
 
@@ -57,22 +58,11 @@ Video exports render one loop at 60 fps. Default export resolution is 2048 × 20
 ## Export
 
 - Open or select the image to choose it for export.
-- Click **SAVE IMAGE** to save it as JPEG.
+- Use **AA + / −** to adjust image smoothness (antialiasing).
+- Click **SAVE IMAGE** to save it as JPEG, or press **s** to save the focused image.
 - Click **SAVE VIDEO** to render as H.264 MOV if [FFmpeg](https://ffmpeg.org/download.html) is installed, otherwise as JPEG sequence.
 
 Exports are saved to `outputs/` next to the `pixy/` folder.
-
-
-
-## Additional controls
-
-| Control | Action |
-| --- | --- |
-| **Space** | Develop selected images plus the hovered image |
-| **x** | Develop selected images |
-| **s** | Save the focused image |
-| **NUM + / −** | Increase / decrease the grid size |
-| **AA + / −** | Adjust image smoothness (antialiasing) |
 
 ## Customizing generation
 

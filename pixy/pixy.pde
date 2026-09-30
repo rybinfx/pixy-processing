@@ -20,13 +20,14 @@ void settings() {
   // Processing's non-AWT macOS path reports density 1 even on Retina.
   // Configure the backing density directly, as in pixy2.
   pixelDensity = platform == MACOSX ? 2 : 1;
-	PJOGL.setIcon("data/logo.png");
+	PJOGL.setIcon(dataPath("logo.png"));
 }
 
 void setup() {
 	surface.setResizable(true);
 
 	logo = loadImage("logo.png");
+	setSketchAppIcon(logo);
 
 
 	pushStyle();
