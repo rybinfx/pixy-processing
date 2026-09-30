@@ -13,7 +13,7 @@ uniform float u_hoff;
 uniform float u_args[512];
 
 
-vec3 precol[64];
+vec3 precol[256]; // Maximum AA is 16: 16 * 16 samples.
 uniform int u_aa;
 int iterX = 0;
 int iterY = 0;

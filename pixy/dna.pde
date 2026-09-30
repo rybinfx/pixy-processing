@@ -1,3 +1,6 @@
+// Each constant uses three floats in the shader's u_args[512] array.
+final int MAX_DNA_ARGS = 170;
+
 class DNA {
 	ArrayList<Gene> genes;
 	float scale = 1;
@@ -111,11 +114,11 @@ class DNA {
 		ArrayList<PVector> sorted = new ArrayList<PVector>();
 		for (Gene g : genes) {
 			if (g.type == "rndm" || g.type == "rndm3") {
-				if (sorted.size() < 512) {
+				if (sorted.size() < MAX_DNA_ARGS) {
 					sorted.add( args.get(g.argsBinder) );
 					g.argsBinder = sorted.size()-1;
 				} else {
-					g.argsBinder = 511;
+					g.argsBinder = MAX_DNA_ARGS - 1;
 				}
 			}
 		}

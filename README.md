@@ -37,7 +37,7 @@ The current sketch has been tested with Processing 4.5.6 on macOS 26.6.2.
 
 - Click **NEW** to generate a random population.
 - Select images for evolution with the corner button.
-- Click **DEVELOP** or press **x** to generate new variations from the selected images.
+- Click **DEVELOP** to generate new variations from the selected images.
 - Use **Cmd/Ctrl-click** or hover and press **Space** to evolve an image together with the current selection.
 - Click **REPEAT** to generate another population from the last selection.
 - Use **NUM + / −** to increase or decrease population size.
@@ -80,18 +80,25 @@ Edit `genesMethodsGroupRate` in [genes.pde](pixy/genes.pde) to adjust function g
 | `genesLogicRate` | `if` `and` `or` `xor` |
 | `genesElseRate` | `hsb2rgb` `combine` `setH` `setS` `setV` `noise2` |
 
-
 ## Inspiration
 
-Pixy was heavily inspired by Karl Sims's work on evolving images through user selection, particularly the use of symbolic expressions that can be mutated and combined.
+The project was heavily inspired by Karl Sims's work on evolving images through user selection, particularly the use of symbolic expressions that can be mutated and combined.
 
 Sims, Karl. 1991. [*Artificial Evolution for Computer Graphics*](https://www.karlsims.com/papers/SimsSiggraph91.pdf). *Computer Graphics*, 25(4), 319–328. ACM SIGGRAPH '91 Conference Proceedings.
 
-## License and credits
+
+## About
 
 Pixy was my first generative application and my first encounter with shaders, made in 2017 as a university project. Updated for release in 2026.
 
-Pixy by [rybinfx](https://rybinfx.com): [MIT](LICENSE).
+[༺ཧคlคฝคཊ༻](https://rybinfx.com)
+
+
+## License and credits
+
+Pixy is released under the [MIT License](LICENSE). You may use, modify, and distribute the code, including commercially, provided you retain the copyright and license notices. The software is provided “as is”, without warranty.
+
+Bundled libraries and fonts retain their own licenses:
 
 ControlP5 by Andreas Schlegel: [LGPL 2.1 or later](pixy/third-party/controlP5/LICENSE.md). [Bundled library source and attribution](pixy/third-party/controlP5/README.md).
 

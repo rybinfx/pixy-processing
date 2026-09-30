@@ -201,6 +201,14 @@ class App {
 		popRow = n;
 		popSize = n*n;
 		pop.setPopSize(n);
+		// A smaller grid may remove the selected or inspected artwork.
+		if (lastSel >= popSize) lastSel = -1;
+		if (lastIdPressed >= popSize) lastIdPressed = -1;
+		if (focusedId >= popSize) {
+			focusedId = 0;
+			isFocused = false;
+			view = "GRID";
+		}
 	}
 
 	void randomPop() {
@@ -404,8 +412,8 @@ class App {
 				selButs.add(addBut(i));
 			}
 		} else if (selButs.size() > popSize) {
-			for (int i = 0; i < selButs.size() - popSize; i++) {
-				selButs.remove(selButs.size()-1);
+			while (selButs.size() > popSize) {
+				selButs.remove(selButs.size()-1).remove();
 			}
 		}
 
@@ -663,10 +671,6 @@ class App {
 
 		if (key == 'c') {
 			pop.arts.get(focusedId).isSelected = !pop.arts.get(focusedId).isSelected;
-		}
-
-		if (key == 'x') {
-			pop.evolve();
 		}
 
 		if (key == 't') {

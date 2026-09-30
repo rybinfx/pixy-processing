@@ -178,8 +178,8 @@ class Gene {
 
 		if (type == "rndm") {
 			nodes = 0;
-			if (p.args.size() >= 511) {
-				argsBinder = 511;
+			if (p.args.size() >= MAX_DNA_ARGS) {
+				argsBinder = MAX_DNA_ARGS - 1;
 			} else {
 				argsBinder = p.args.size();
 				float temp = random(1);
@@ -189,8 +189,8 @@ class Gene {
 
 		if (type == "rndm3") {
 			nodes = 0;
-			if (p.args.size() >= 511) {
-				argsBinder = 511;
+			if (p.args.size() >= MAX_DNA_ARGS) {
+				argsBinder = MAX_DNA_ARGS - 1;
 			} else {
 				argsBinder = p.args.size();
 				float temp = random(1);
