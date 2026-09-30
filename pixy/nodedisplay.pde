@@ -11,7 +11,7 @@ class NodeDisplay {
     pushStyle();
     pushMatrix();
     textFont(app.font);
-    textSize(14);
+    textSize(15);
     textAlign(CENTER, CENTER);
 
     int depth = 0;

@@ -4,7 +4,7 @@ String[] genesValues = new String[] {
 	"rndm",
 	"rndm3"
 };
-float[] genesValuesRate = new float[] {1, 1, 0.5, 0.5, 0.5};
+float[] genesValuesRate = new float[] {1, 1, 0.5, 0.5};
 
 
 String[] genesBasicMath = new String[] {

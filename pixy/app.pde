@@ -122,11 +122,11 @@ class App {
 
 	ArrayList<Button> selButs = new ArrayList<Button>();
 
-	PFont font = createFont("font.ttf", uiblock+2);
-	PFont fontbig = createFont("font.ttf", (uiblock*2+2));
+	PFont font = createFont("Inconsolata-Regular.ttf", uiblock+3);
+	PFont fontbig = createFont("Inconsolata-Regular.ttf", (uiblock*2+3));
 	// Keep ControlP5 sizes in points while Processing renders Retina glyphs.
-	ControlFont controlFont = new ControlFont(font, uiblock+2);
-	ControlFont controlFontBig = new ControlFont(fontbig, uiblock*2+2);
+	ControlFont controlFont = new ControlFont(font, uiblock+3);
+	ControlFont controlFontBig = new ControlFont(fontbig, uiblock*2+3);
 
 	App() {
 		pop = new Pop(this);
@@ -455,8 +455,8 @@ class App {
 	}
 
 	void selButAction(int n) {
-		// A Cmd-click on the selection button belongs to the Develop shortcut.
-		if (developClick || (mouseEvent != null && mouseEvent.isMetaDown())) return;
+		// A shortcut-click on the selection button belongs to Develop.
+		if (developClick || isDevelopModifierDown(mouseEvent)) return;
 		if (!pop.arts.get(n).isSelected) {
 			selButs.get(n).setColorBackground(mainColor)
 			.setColorActive(mainColorDown) 
@@ -562,23 +562,37 @@ class App {
 
 	// Global UI Events
 
+	boolean isDevelopModifierDown(processing.event.MouseEvent event) {
+		return event != null && (platform == MACOSX ? event.isMetaDown() : event.isControlDown());
+	}
+
+	int artworkUnderMouse() {
+		if (view == "SINGLE" && mouseOver(0, 0, displaySize.x, displaySize.y)) {
+			return focusedId;
+		}
+		if (view == "GRID") {
+			for (int i = 0; i < pop.arts.size(); i++) {
+				if (mouseOver(gridPos[i].x, gridPos[i].y, gridScale.x, gridScale.y)) return i;
+			}
+		}
+		return -1;
+	}
+
+	void developWithImage(int id) {
+		if (id >= 0 && id < pop.arts.size()) pop.arts.get(id).isSelected = true;
+		if (!isAnySelected()) return;
+		actionMainEvolve();
+		view = "GRID";
+	}
+
 	void mousePressed(processing.event.MouseEvent event) {
 		developClick = false;
-		if (event.getButton() == LEFT && event.isMetaDown()) {
+		if (event.getButton() == LEFT && isDevelopModifierDown(event)) {
 			lastIdPressed = -1;
-			int clicked = -1;
-			if (view == "SINGLE" && mouseOver(0, 0, displaySize.x, displaySize.y)) {
-				clicked = focusedId;
-			} else if (view == "GRID") {
-				for (int i = 0; i < pop.arts.size(); i++) {
-					if (mouseOver(gridPos[i].x, gridPos[i].y, gridScale.x, gridScale.y)) clicked = i;
-				}
-			}
+			int clicked = artworkUnderMouse();
 			if (clicked >= 0) {
 				developClick = true;
-				pop.arts.get(clicked).isSelected = true;
-				actionMainEvolve();
-				view = "GRID";
+				developWithImage(clicked);
 			}
 			return;
 		}
@@ -626,7 +640,7 @@ class App {
 
 	void keyPressed() {
 		if (key == ' ') {
-			pop.randomPop();
+			developWithImage(artworkUnderMouse());
 		}
 
 		if (key == BACKSPACE) {
@@ -1060,6 +1074,7 @@ class App {
 		}
 		timeRun = false;
 		appTime = 0;
+		sTimePos.setValue(0);
 		bTimePlay.setColorBackground(grayNormal)
 		.setColorActive(grayNormalDown) 
 		.setColorForeground(grayNormalOver)

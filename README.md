@@ -1,65 +1,108 @@
 # Pixy
-Processing, 2017
+**Evolutionary shaders in Processing**
 
-Pixy is an evolutionary generative system for exploring visual space of mathematical functions through guided selection.
+![Pixy screenshot](images/pixy-screenshot.png)
 
-Pixy builds graphs of mathematical expressions with image **xy** coordinates as inputs, and **rgb** color as output. Initial graphs are constructed randomly, and mutated and combined through user selection.
+<br>
 
-## Functions and probabilities
+Pixy is an evolutionary system for generating images and animations from mathematical functions through guided selection. Images are constructed by passing pixel `x` `y` coordinates as function inputs, and returning `rgb` pixel colors as outputs. Functions are constructed as random expression trees, which are evolved and mixed with user guidance.
 
-The current setup in [genes.pde](pixy/genes.pde) chooses a function group first, then a function within that group. The rates are relative weights: the percentages below are normalized and rounded. Function percentages are conditional on choosing their group, not percentages of all nodes.
+<br>
 
-| Group | Group weight | Group probability | Functions and probability within the group |
-| --- | ---: | ---: | --- |
-| Basic Math | 1 | 64.10% | `add`, `sub`, `mult`, `div`: 25% each |
-| Exponential | 0.01 | 0.64% | `pow2`, `sqrt`: 31.25% each; `powOf`, `logOf`, `2pow`, `2log`: 9.38% each |
-| Round | 0.1 | 6.41% | `mod`: 11.11%; `fract`, `floor`, `ceil`, `round`: 22.22% each |
-| Trigonometry | 0.1 | 6.41% | `sin`, `cos`: 35.71% each; `tan`, `asin`, `acos`: 3.57% each; `atan`: 17.86% |
-| Constrain | 0.1 | 6.41% | `min`, `max`, `abs`: 28.57% each; `clamp`: 14.29% |
-| Mix | 0.1 | 6.41% | `mix` (linear interpolation): 100% |
-| Logic | 0.1 | 6.41% | `if`, `and`, `or`, `xor` (comparison-based branches): 25% each |
-| Else: color and noise | 0.05 | 3.21% | `hsb2rgb`, `combine`, `setH`, `setS`, `setV`, `noise2`: 16.67% each |
+![Pixy examples](images/pixy-examples.png)
 
-Functions work on three-channel values. The color group converts HSB to RGB, combines three inputs into RGB channels, replaces hue/saturation/value, or generates 2D noise. In the archived shader, `pow2` squares its input, `sqrt` takes the square root of its absolute value, `powOf(a,b)` computes `a^abs(b)`, `logOf(a,b)` computes `log(a)/log(b)`, `2pow(a)` computes `2^a`, and `2log(a)` computes `log(2)/log(a)`.
+<br>
 
-Leaf values are selected separately:
+## How it works
 
-| Value | Meaning | Weight | Probability among leaves |
-| --- | --- | ---: | ---: |
-| `x` | Horizontal image coordinate | 1 | 33.33% |
-| `y` | Vertical image coordinate | 1 | 33.33% |
-| `rndm` | One random value shared by all three channels | 0.5 | 16.67% |
-| `rndm3` | A shared random base with independent Gaussian variation per channel | 0.5 | 16.67% |
 
-The choice between a function and a leaf depends on tree depth and DNA complexity, so these tables do not predict the final node distribution after evolution. For example, `add` has a 64.10% × 25% ≈ 16.03% chance when selecting a function. The picker retries up to 100 times at each stage, then falls back to `rndm`; these negligible fallback probabilities are omitted. Unused trailing entries in the rate arrays are also excluded.
+Pixy manages a population of images, each with its own DNA and shader. The DNA is an expression tree: its leaves provide coordinates or random constants, while function nodes combine them through arithmetic, trigonometry, logic, color and noise operations. User selection determines parents for the next generation. Mutation changes values, functions, and branches. Combining parents exchanges branches between their trees. Each tree is compiled into a GLSL expression and inserted into a fragment shader template.
 
-![Pixy interface with generated images and controls](screenshot.png)
+![Pixy graph](images/pixy-graph.gif)
 
-[Gallery on Behance](https://www.behance.net/gallery/69729037/Pixy)
 
-## Run
 
-Open `pixy/pixy.pde` in Processing's Java mode and click **Run**. ControlP5 2.2.6 is bundled in `pixy/code/`; no separate library installation is needed.
 
-Originally written for Processing 3. The current sketch has been checked with Processing 4.5.6 on macOS.
+## Getting started
 
-## Usage
+- Download and install [Processing](https://processing.org/download/).
+- Download and extract this repository.
+- Open `pixy/pixy.pde` in Processing's **Java mode** and click **Run**.
 
-- Click **New** to generate a new random population.
-- Click on an image to open it. Drag or use the arrow keys to pan; use **a / z** to zoom. The graph view shows current expression. Click **Back** to return to the grid.
-- To control population size, use **+ / −** under **Num**.
-- To adjust image smoothness, use **+ / −** under **AA**.
-- Open the image you want to save, set the output size with **RES**, then click **Save Image**. JPEGs use unique names such as `pixy123456.jpg`, preserving existing images.
-- Use the bottom playback controls to animate; the upper time slider sets the loop duration. **Save Video** renders one loop at 60 fps. If FFmpeg is available, it creates an H.264 MOV such as `pixy123456.mov` and removes the intermediate JPEG frames after successful encoding. Otherwise, or if encoding fails, the frames stay in the matching `pixy123456/` folder as `frame00000.jpg`, `frame00001.jpg`, etc. Stopping a render also keeps its frames.
+ControlP5 is bundled; no separate library installation is required.
 
-FFmpeg is optional and is detected on `PATH` or in standard Homebrew/MacPorts locations on macOS. Export progress and output paths are printed in Processing's console. Odd output dimensions are padded by one pixel for H.264 compatibility.
+The current sketch has been tested with Processing 4.5.6 on macOS 26.6.2.
 
-All exports go into `../outputs/` relative to the sketch folder: `outputs/` beside `pixy/` in this repository. Images, movies, and retained frame folders share this directory; each export reserves an unused six-digit `pixyXXXXXX` name.
+## Evolving images
 
-## Source
+- Click **NEW** to generate a random population.
+- Select images for evolution with the corner button.
+- Click **DEVELOP** to generate new variations from the selected images.
+- Use **Cmd/Ctrl-click** or hover and press **Space** to evolve an image together with the current selection.
+- Click **REPEAT** to generate another population from the previous parents. Currently selected images join the parent pool for this and subsequent repeats.
 
-`pixy.pde` starts the sketch; `app.pde` handles the interface. `dna.pde` and `genes.pde` define expressions and evolution, `pop.pde` manages the population, `artwork.pde` renders images, and `nodedisplay.pde` displays expression trees. Shaders and assets are in `data/`.
+## Inspecting an image
 
-## License
+- Click an image in the grid to inspect it.
+- Drag the canvas or use the arrow keys to pan; press **a / z** to zoom.
+- The graph view represents the expression tree of the selected image.
 
-Pixy: [MIT](LICENSE). Bundled ControlP5: [LGPL 2.1 or later](pixy/third-party/controlP5/LICENSE.md), by Andreas Schlegel. Its [source archive and attribution](pixy/third-party/controlP5/README.md) are included.
+## Animation
+
+- Click **>** to enable animation.
+- Set loop duration and animation speed with the **TIME** slider.
+
+Video exports render one loop at 60 fps. Default export resolution is 2048 × 2048 px, adjustable with **RES**.
+
+## Export
+
+- Open or select the image to choose it for export.
+- Click **SAVE IMAGE** to save it as JPEG.
+- Click **SAVE VIDEO** to render as H.264 MOV if [FFmpeg](https://ffmpeg.org/download.html) is installed, otherwise as JPEG sequence.
+
+Exports are saved to `outputs/` next to the `pixy/` folder.
+
+
+
+## Additional controls
+
+| Control | Action |
+| --- | --- |
+| **Space** | Develop selected images plus the hovered image |
+| **x** | Develop selected images |
+| **s** | Save the focused image |
+| **NUM + / −** | Increase / decrease the grid size |
+| **AA + / −** | Adjust image smoothness (antialiasing) |
+
+## Customizing generation
+
+Pixy chooses functions for generation and mutation using relative weights in range [0-1]. 
+Edit `genesMethodsGroupRate` in [genes.pde](pixy/genes.pde) to adjust function group weights. Edit the arrays below to adjust function weights within each group:
+
+| Group | Functions |
+| --- | --- |
+| `genesBasicMathRate` | `add` `sub` `mult` `div` |
+| `genesExponentialRate` | `pow2` `sqrt` `powOf` `logOf` `2pow` `2log` |
+| `genesRoundRate` | `mod` `fract` `floor` `ceil` `round` |
+| `genesTrigRate` | `sin` `cos` `tan` `asin` `acos` `atan` |
+| `genesConstrainRate` | `min` `max` `clamp` `abs` |
+| `genesMixRate` | `mix` |
+| `genesLogicRate` | `if` `and` `or` `xor` |
+| `genesElseRate` | `hsb2rgb` `combine` `setH` `setS` `setV` `noise2` |
+
+
+## Inspiration
+
+Pixy was heavily inspired by Karl Sims's work on evolving images through user selection, particularly the use of symbolic expressions that can be mutated and combined.
+
+Sims, Karl. 1991. [*Artificial Evolution for Computer Graphics*](https://www.karlsims.com/papers/SimsSiggraph91.pdf). *Computer Graphics*, 25(4), 319–328. ACM SIGGRAPH '91 Conference Proceedings.
+
+## License and credits
+
+Pixy was my first generative application and my first encounter with shaders, made in 2017 as a university project. Updated for release in 2026.
+
+Pixy by [rybinfx](https://rybinfx.com): [MIT](LICENSE).
+
+ControlP5 by Andreas Schlegel: [LGPL 2.1 or later](pixy/third-party/controlP5/LICENSE.md). [Bundled library source and attribution](pixy/third-party/controlP5/README.md).
+
+Inconsolata by the Inconsolata Project Authors: [SIL Open Font License 1.1](pixy/third-party/Inconsolata/OFL.txt). [Bundled font source and attribution](pixy/third-party/Inconsolata/README.md).

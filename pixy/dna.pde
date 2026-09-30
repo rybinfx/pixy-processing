@@ -1,6 +1,6 @@
 class DNA {
 	ArrayList<Gene> genes;
-	float scale = 4;
+	float scale = 1;
 	PVector offset = new PVector();
 	float hueOffset;
 	ArrayList<PVector> args = new ArrayList<PVector>();
