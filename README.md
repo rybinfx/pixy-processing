@@ -92,6 +92,12 @@ Click **Randomize** beside **Save** to assign new random weights in 0–1 across
 
 ## Running
 
+### Web version
+
+Run `npm start --prefix web` and open [localhost:5173](http://localhost:5173). The standalone [web port](web/README.md) displays a population of images: hover to preview, click to develop variations from that image alone. It uses the original interface design with compact, unified controls. The original active nodes and a `feedback(pxy)` image node are included; population mixing, crossover, shortcuts, and export are omitted. No dependencies or build step are required.
+
+### Processing version
+
 Open the sketch in [Processing](https://processing.org/) (written for Processing 3) and run `pixy.pde`. Requires the ControlP5 library.
 
 ## Files

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111111">
+  <title>Pixy</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="src/app.js"></script>
+</head>
+<body>
+  <canvas id="population-canvas" aria-hidden="true"></canvas>
+  <main id="workspace">
+    <section id="stage" aria-label="Population">
+      <div id="population" role="group" aria-label="Images: hover to preview, click to develop"></div>
+    </section>
+    <div id="divider" role="separator" aria-label="Resize panels" aria-orientation="vertical"></div>
+    <aside id="controls" aria-label="Controls">
+      <div class="inspector">
+        <div class="inspector-tabs">
+          <button id="image-tab" aria-pressed="false" disabled>image</button>
+          <button id="graph-tab" aria-pressed="false" disabled>graph</button>
+          <button id="weights-tab" aria-pressed="true">probabilities</button>
+        </div>
+        <div id="image-panel" class="inspector-panel" hidden><div id="preview" role="img" aria-label="Image preview. Drag to pan; scroll to zoom."></div></div>
+        <div id="graph-panel" class="inspector-panel" hidden><svg id="graph" role="img" aria-label="Image graph"></svg></div>
+        <div id="weights-panel" class="inspector-panel"><div id="probabilities"></div><div class="weights-actions"><button id="save-defaults">save</button><button id="randomize-weights">randomize</button></div></div>
+      </div>
+      <div class="control-box settings" aria-label="Generation and playback">
+        <div class="control-row">
+          <label class="slider-field"><span>num</span><output id="count">25</output><input id="num" type="range" min="2" max="8" step="1" value="5" aria-label="NUM"></label>
+          <label class="slider-field"><span>aa</span><output id="aa-value">1</output><input id="aa" type="range" min="1" max="4" step="1" value="1" aria-label="AA"></label>
+          <label class="slider-field"><span>scale</span><output id="scale-value">0</output><input id="scale" type="range" min="-5" max="5" step="0.01" value="0" aria-label="Scale"></label>
+        </div>
+        <div class="control-row">
+          <label class="slider-field"><span>depth</span><output id="depth-value">6</output><input id="depth" type="range" min="3" max="32" step="1" value="6" aria-label="Depth"></label>
+          <label class="slider-field"><span>width</span><output id="width-value">6</output><input id="width" type="range" min="3" max="32" step="1" value="6" aria-label="Width"></label>
+          <label class="slider-field"><span>mut</span><output id="mutation-value">100</output><input id="mutation" type="range" min="0" max="2000" step="10" value="100" aria-label="Mutation"></label>
+        </div>
+        <div class="control-row">
+          <button id="new" disabled>new</button>
+          <label class="slider-field"><span>loop</span><output id="duration-value">5.0s</output><input id="duration" type="range" min="0.5" max="60" step="0.5" value="5" aria-label="Loop length"></label>
+          <button id="play-stop" aria-label="Play" aria-pressed="false">play</button>
+        </div>
+        <button id="feedback-debug" aria-pressed="false" title="Replace every feedback sample with solid green">feedback debug</button>
+      </div>
+    </aside>
+  </main>
+  <div id="error" role="alert" hidden><span id="error-text"></span><button id="dismiss-error" aria-label="Dismiss error">×</button></div>
+  <noscript>Enable JavaScript to run Pixy.</noscript>
+</body>
+</html>
